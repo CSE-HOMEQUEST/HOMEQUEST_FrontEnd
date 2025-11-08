@@ -2,8 +2,7 @@ import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as React from 'react';
 
-import ChallengeScreen from '../screens/ChallengeScreen';
-import HomeScreen from '../screens/HomeScreen';
+import ChallengeScreen from '../screens/Challenge';
 
 const Stack = createNativeStackNavigator();
 const theme = {
@@ -15,11 +14,6 @@ export default function RootNavigator() {
   return (
     <NavigationContainer theme={theme}>
       <Stack.Navigator screenOptions={{ headerShadowVisible: false }}>
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ title: 'HomeQuest' }}
-        />
         <Stack.Screen
           name="Challenge"
           component={ChallengeScreen}
