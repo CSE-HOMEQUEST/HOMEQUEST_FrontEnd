@@ -1,25 +1,17 @@
-import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import * as React from 'react';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 
-import ChallengeScreen from '../screens/Challenge';
-
-const Stack = createNativeStackNavigator();
-const theme = {
-  ...DefaultTheme,
-  colors: { ...DefaultTheme.colors, background: '#F7F8FC' },
-};
-
-export default function RootNavigator() {
+export function HomeScreen() {
   return (
-    <NavigationContainer theme={theme}>
-      <Stack.Navigator screenOptions={{ headerShadowVisible: false }}>
-        <Stack.Screen
-          name="Challenge"
-          component={ChallengeScreen}
-          options={{ title: '챌린지' }}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <View style={styles.container}>
+      <Text style={styles.title}>홈 화면</Text>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  title: { fontSize: 20, fontWeight: '600' },
+});
+
+export default HomeScreen;
