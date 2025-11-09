@@ -138,7 +138,10 @@ function ChallengeCard({
         <View style={styles.metaDivider} />
         <Text style={styles.challengeMetaText}>{type}</Text>
         <View style={{ flex: 1 }} />
-        <Text style={styles.chevron}>{'›'}</Text>
+        <Image
+          source={require('../../assets/images/tabler_chevron-left.png')}
+          style={styles.chevronIcon}
+        />
       </View>
 
       {/* 타이틀 */}
@@ -182,14 +185,17 @@ function ChallengeCardv2({
   const hasProgress = progressRatio > 0;
 
   return (
-    <View style={styles.challengeCard}>
+    <View style={styles.challengeCard2}>
       {/* 상단 카테고리 행 */}
       <View style={styles.challengeCardHeader}>
         <Text style={styles.challengeMetaText}>{category}</Text>
         <View style={styles.metaDivider} />
         <Text style={styles.challengeMetaText}>{type}</Text>
         <View style={{ flex: 1 }} />
-        <Text style={styles.chevron}>{'›'}</Text>
+        <Image
+          source={require('../../assets/images/tabler_chevron-left.png')}
+          style={styles.chevronIcon}
+        />
       </View>
 
       {/* 타이틀 - 중앙 정렬 */}
@@ -269,6 +275,14 @@ function RecommendedChallengeSection() {
 
       {/* 카드 */}
       <View style={styles.recommendedCard}>
+        {/* 삭제 버튼 (오른쪽 상단 X 아이콘) */}
+        <TouchableOpacity style={styles.deleteButton}>
+          <Image
+            source={require('../../assets/images/Vector.png')}
+            style={styles.deleteIcon}
+          />
+        </TouchableOpacity>
+
         {/* 상단 메타 */}
         <View style={styles.recommendedMetaRow}>
           <Text style={styles.challengeMetaText}>가사</Text>
@@ -510,6 +524,7 @@ const styles = StyleSheet.create({
     color: '#353535',
     marginBottom: 10,
     fontFamily: 'Roboto',
+    fontWeight: '500',
   },
 
   /* 나의 챌린지 현황 */
@@ -579,10 +594,27 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 
+  challengeCard2: {
+    width: 135,
+    height: 108,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    marginRight: 16,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    // 그림자
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+
   challengeCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 9,
   },
   challengeMetaText: {
     fontSize: 12,
@@ -595,17 +627,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#7B7B7B',
     marginHorizontal: 4,
   },
-  chevron: {
-    fontSize: 16,
-    color: '#7B7B7B',
+  chevronIcon: {
+    width: 15, // 아이콘 크기 조정 (필요에 따라 10~16)
+    height: 15,
+    tintColor: '#7B7B7B', // 색상 변경 (원본 그대로 쓰려면 이 줄 삭제)
+    resizeMode: 'contain', // 비율 유지
   },
+
   challengeTitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#353535',
-    marginBottom: 6,
+    marginBottom: 4,
     textAlign: 'center',
     alignSelf: 'center',
     fontFamily: 'Roboto',
+    fontWeight: '500',
   },
   badge: {
     alignSelf: 'flex-start',
@@ -613,7 +649,7 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     paddingHorizontal: 10,
     paddingVertical: 3,
-    marginBottom: 6,
+    marginBottom: 4,
     marginLeft: 51,
   },
   badge2: {
@@ -622,7 +658,7 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     paddingHorizontal: 10,
     paddingVertical: 3,
-    marginBottom: 6,
+    marginBottom: 4,
   },
 
   badgeTriangle: {
@@ -678,12 +714,15 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   refreshIcon: {
-    fontSize: 18,
+    marginRight: 240,
+    fontSize: 20,
+    marginTop: -11,
     color: '#353535',
+    fontWeight: '500',
   },
   recommendedCard: {
     width: 335,
-    height: 91,
+    height: 90,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
     // 그림자
@@ -695,10 +734,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 23,
     paddingVertical: 14,
   },
+
+  deleteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    padding: 4,
+    zIndex: 10, // 다른 요소 위로 오게
+  },
+
+  deleteIcon: {
+    width: 11,
+    height: 11,
+    tintColor: '#7B7B7B', // 필요시 색상 변경, 원본색 유지하려면 제거
+    resizeMode: 'contain',
+  },
+
   recommendedMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 5,
   },
   metaIcon: {
     width: 11,
@@ -722,14 +777,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   recommendedTitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#353535',
     marginBottom: 4,
     fontFamily: 'Roboto',
+    fontWeight: '500',
   },
   recommendedPoint: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#FDD529',
+    fontWeight: '500',
   },
   ctaButton: {
     width: 45,
@@ -771,7 +828,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    height: 89,
+    height: 75,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
