@@ -497,9 +497,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 6,
-    // 안드로이드
-    elevation: 3,
+    shadowRadius: 16,
+    elevation: 4,
   },
   categoryButtonActive: {
     backgroundColor: '#FFFFFF',
@@ -543,8 +542,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowRadius: 16,
+    elevation: 4,
     paddingHorizontal: 12,
   },
   statItem: {
@@ -588,10 +587,10 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     // 그림자
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
 
   challengeCard2: {
@@ -605,10 +604,10 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     // 그림자
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
 
   challengeCardHeader: {
@@ -727,8 +726,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     // 그림자
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 4,
     paddingHorizontal: 23,
