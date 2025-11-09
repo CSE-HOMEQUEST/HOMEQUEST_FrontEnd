@@ -1,5 +1,5 @@
 // src/screens/Ranking.tsx
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -59,7 +59,26 @@ function MyRankingCard() {
   );
 }
 
-function RankingInfo() {
+/** ? 버튼용 props */
+type RankingInfoProps = {
+  onPressInfo: (pos: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
+};
+
+function RankingInfo({ onPressInfo }: RankingInfoProps) {
+  const infoRef = useRef<View | null>(null);
+
+  const handlePress = () => {
+    // ? 버튼의 화면 좌표 측정
+    infoRef.current?.measureInWindow((x, y, width, height) => {
+      onPressInfo({ x, y, width, height });
+    });
+  };
+
   return (
     <View style={styles.rankingInfo}>
       {/* 기간 / 참가자 정보 */}
@@ -72,7 +91,11 @@ function RankingInfo() {
       {/* 지역 + 물음표 버튼 */}
       <View style={styles.rankingLocationRow}>
         <Text style={styles.rankingLocationText}>서울시 성동구 행당동</Text>
-        <TouchableOpacity style={styles.infoTooltipButton}>
+        <TouchableOpacity
+          ref={infoRef}
+          style={styles.infoTooltipButton}
+          onPress={handlePress}
+        >
           <Image
             source={require('../../assets/images/si_help-fill.png')}
             style={styles.infoTooltipIcon}
@@ -213,7 +236,7 @@ function RankingAll() {
       })}
     </View>
   );
-} // ✅ 이 중괄호가 빠져 있었음!!
+}
 
 function BottomTabBar() {
   return (
@@ -274,6 +297,14 @@ function BottomTabBar() {
 }
 
 export function Ranking() {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -291,7 +322,12 @@ export function Ranking() {
 
           {/* 기간 / 지역 / 랜덤박스 */}
           <View style={styles.infoRow}>
-            <RankingInfo />
+            <RankingInfo
+              onPressInfo={(pos) => {
+                setTooltipPos(pos);
+                setShowTooltip(true);
+              }}
+            />
             <RandomBox />
           </View>
 
@@ -335,6 +371,49 @@ export function Ranking() {
           <RankingAll />
         </View>
       </ScrollView>
+
+      {/* ? 눌렀을 때 뜨는 말풍선 */}
+      {showTooltip && tooltipPos && (
+        <View style={styles.tooltipBackdrop}>
+          {/* 화살표 */}
+          <View
+            style={[
+              styles.tooltipArrow,
+              {
+                top: tooltipPos.y - 75,
+                left: tooltipPos.x + tooltipPos.width / 2 - 13, // 12 = 화살표 가로 절반
+              },
+            ]}
+          />
+
+          {/* 말풍선 박스 */}
+          <View
+            style={[
+              styles.tooltipBox,
+              {
+                top: tooltipPos.y - 75 + 8, // ? 바로 아래 8px
+                left: 20,
+                right: 20,
+              },
+            ]}
+          >
+            <Text style={styles.tooltipText}>
+              매월 1일, 랭킹이 갱신됩니다!{'\n'}매 시즌 랭킹은 같은 동에
+              거주하는 가족들끼리 경쟁해요.{'\n\n'}
+              랭킹이 오를수록 오른쪽 상단의 🎁상자깡 확률이 높아지고, 상자
+              안에는 할인쿠폰, 포인트 등 랜덤 선물이 들어 있습니다.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.tooltipCloseButton}
+              onPress={() => setShowTooltip(false)}
+            >
+              <Text style={styles.tooltipCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       <BottomTabBar />
     </SafeAreaView>
   );
@@ -355,7 +434,7 @@ const styles = StyleSheet.create({
   },
 
   main: {
-    paddingHorizontal: 30, // 대신 컨텐츠용 패딩을 여기서 줌
+    paddingHorizontal: 30, // 컨텐츠용 패딩
   },
 
   /* 헤더 */
@@ -447,15 +526,15 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   myRankingSub: {
-    fontSize: 14, // ✅ “입니다”도 14로 통일
+    fontSize: 14,
     color: '#A0A0A0',
     fontFamily: 'Roboto',
     fontWeight: '500',
   },
   myRankingNumber: {
-    fontSize: 20, // “6위”만 크고
+    fontSize: 20,
     fontFamily: 'Roboto',
-    fontWeight: '500', // 굵게 강조
+    fontWeight: '500',
     color: '#000000',
   },
 
@@ -535,7 +614,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end', // 아래 기준으로 정렬
   },
   firstPlaceWrapper: {
-    marginBottom: 40,
+    marginBottom: 40, // 1등 제일 높게
+  },
+  secondPlaceWrapper: {
+    marginBottom: 20, // 2등 중간
+  },
+  thirdPlaceWrapper: {
+    marginBottom: 0, // 3등 제일 낮게
   },
   topCard: {
     width: 103,
@@ -662,14 +747,60 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontFamily: 'Roboto',
     textAlign: 'center',
-    fontWeight: '600',
+    fontWeight: '500',
   },
   rankScoreText: {
     fontSize: 12,
     color: '#FF4D4F',
     fontFamily: 'Roboto',
-    fontWeight: '600',
+    fontWeight: '500',
   },
+
+  /* 툴팁 오버레이 */
+  tooltipBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    borderLeftWidth: 12,
+    borderRightWidth: 12,
+    borderBottomWidth: 12,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#353535',
+  },
+  tooltipBox: {
+    position: 'absolute',
+    backgroundColor: '#353535',
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+  },
+  tooltipText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#FFFFFF',
+    fontFamily: 'Roboto',
+  },
+  tooltipCloseButton: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    padding: 6,
+  },
+  tooltipCloseText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+  },
+
+  /* 하단 탭바 */
   bottomTabBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -684,12 +815,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-
   tabButton: {
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
-
   tabIcon: {
     width: 50,
     height: 50,
