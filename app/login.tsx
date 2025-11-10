@@ -40,7 +40,14 @@ export default function LoginScreen() {
         />
 
         {/* 로그인 버튼 */}
-        <TouchableOpacity style={styles.loginButton} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.loginButton}
+          activeOpacity={0.8}
+          onPress={() => {
+            // TODO: 나중에 실제 로그인 로직 성공 시에만 실행
+            router.replace('/onboarding-profile');
+          }}
+        >
           <Text style={styles.loginButtonText}>로그인</Text>
         </TouchableOpacity>
 
