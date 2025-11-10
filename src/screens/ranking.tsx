@@ -524,17 +524,18 @@ const styles = StyleSheet.create({
   },
   myRankingName: {
     color: '#000000',
+    fontWeight: '400',
   },
   myRankingSub: {
     fontSize: 14,
     color: '#A0A0A0',
     fontFamily: 'Roboto',
-    fontWeight: '500',
+    fontWeight: '400',
   },
   myRankingNumber: {
     fontSize: 20,
     fontFamily: 'Roboto',
-    fontWeight: '500',
+    fontWeight: '400',
     color: '#000000',
   },
 

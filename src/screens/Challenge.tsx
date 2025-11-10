@@ -247,7 +247,9 @@ function ChallengeProgressSection({
 }) {
   return (
     <View style={styles.challengeProgressSection}>
-      <Text style={styles.sectionTitle}>진행중인 챌린지</Text>
+      <Text style={[styles.sectionTitle, styles.progressSectionTitle]}>
+        진행중인 챌린지
+      </Text>
 
       <ScrollView
         horizontal
@@ -691,9 +693,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     // 그림자 (iOS)
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 11,
     elevation: 4,
   },
   categoryButtonActive: {
@@ -705,6 +707,7 @@ const styles = StyleSheet.create({
   categoryButtonText: {
     fontFamily: 'Roboto',
     fontSize: 14,
+    fontWeight: '500',
   },
   categoryButtonTextActive: {
     color: '#7B7B7B',
@@ -720,6 +723,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontFamily: 'Roboto',
     fontWeight: '500',
+  },
+  // 진행중인 챌린지 전용
+  progressSectionTitle: {
+    // 여기서 원하는 것만 덮어쓰기
+    // 예시) 색, 마진, 폰트 굵기 등
+    marginBottom: -17,
+    color: '#000000',
+    marginLeft: 20,
+    // fontWeight: '700',
   },
 
   /* 나의 챌린지 현황 */
@@ -766,11 +778,14 @@ const styles = StyleSheet.create({
 
   /* 진행중인 챌린지 */
   challengeProgressSection: {
-    marginBottom: 20,
+    marginBottom: -10,
+    marginLeft: -20,
+    marginRight: -30,
   },
   challengeCardList: {
-    paddingVertical: 4,
+    paddingVertical: 30,
     paddingRight: 16,
+    paddingLeft: 20,
   },
   challengeCard: {
     width: 147,
@@ -900,7 +915,7 @@ const styles = StyleSheet.create({
 
   /* 추천 챌린지 */
   recommendedChallengeSection: {
-    marginBottom: 1,
+    marginBottom: 0,
   },
   recommendedHeader: {
     flexDirection: 'row',
@@ -912,7 +927,6 @@ const styles = StyleSheet.create({
     marginRight: 240,
     fontSize: 20,
     marginTop: -11,
-    color: '#353535',
     fontWeight: '500',
   },
   recommendedCard: {
@@ -1002,7 +1016,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
   dotInactive: {
     width: 8,
