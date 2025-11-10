@@ -1,5 +1,4 @@
-// src/screens/Challenge.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Image,
   SafeAreaView,
@@ -8,6 +7,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  TextInput, // ✅ 추가
 } from 'react-native';
 
 function Header() {
@@ -123,12 +123,14 @@ function ChallengeCard({
   title,
   badgeText,
   progressRatio,
+  onPressDetail,
 }: {
   category: string;
   type: string;
   title: string;
   badgeText: string;
   progressRatio: number; // 0~1
+  onPressDetail?: () => void;
 }) {
   return (
     <View style={styles.challengeCard}>
@@ -138,10 +140,15 @@ function ChallengeCard({
         <View style={styles.metaDivider} />
         <Text style={styles.challengeMetaText}>{type}</Text>
         <View style={{ flex: 1 }} />
-        <Image
-          source={require('../../assets/images/tabler_chevron-left.png')}
-          style={styles.chevronIcon}
-        />
+        <TouchableOpacity
+          onPress={onPressDetail}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Image
+            source={require('../../assets/images/tabler_chevron-left.png')}
+            style={styles.chevronIcon}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* 타이틀 */}
@@ -175,12 +182,14 @@ function ChallengeCardv2({
   title,
   badgeText,
   progressRatio,
+  onPressDetail,
 }: {
   category: string;
   type: string;
   title: string;
   badgeText: string;
   progressRatio: number; // 0 ~ 1
+  onPressDetail?: () => void;
 }) {
   const hasProgress = progressRatio > 0;
 
@@ -192,10 +201,15 @@ function ChallengeCardv2({
         <View style={styles.metaDivider} />
         <Text style={styles.challengeMetaText}>{type}</Text>
         <View style={{ flex: 1 }} />
-        <Image
-          source={require('../../assets/images/tabler_chevron-left.png')}
-          style={styles.chevronIcon}
-        />
+        <TouchableOpacity
+          onPress={onPressDetail}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Image
+            source={require('../../assets/images/tabler_chevron-left.png')}
+            style={styles.chevronIcon}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* 타이틀 - 중앙 정렬 */}
@@ -226,7 +240,11 @@ function ChallengeCardv2({
   );
 }
 
-function ChallengeProgressSection() {
+function ChallengeProgressSection({
+  onPressRelayDetail,
+}: {
+  onPressRelayDetail: () => void;
+}) {
   return (
     <View style={styles.challengeProgressSection}>
       <Text style={styles.sectionTitle}>진행중인 챌린지</Text>
@@ -249,6 +267,7 @@ function ChallengeProgressSection() {
           title="돌아가며 청소기 돌리기"
           badgeText="3명 성공"
           progressRatio={0.7}
+          onPressDetail={onPressRelayDetail}
         />
         <ChallengeCard
           category="가사"
@@ -386,9 +405,179 @@ function BottomTabBar() {
   );
 }
 
+// 상세 하단 시트
+type ChallengeDetailProps = {
+  onClose: () => void;
+};
+
+function ChallengeDetail({ onClose }: ChallengeDetailProps) {
+  return (
+    <View style={styles.detailContainer}>
+      {/* 위로 접기 버튼 */}
+      <TouchableOpacity style={styles.detailArrowButton} onPress={onClose}>
+        <Image
+          source={require('../../assets/images/Expand_right.png')}
+          style={styles.detailArrowIcon}
+        />
+      </TouchableOpacity>
+
+      {/* 카테고리 / 제목 */}
+      <View style={styles.detailHeader}>
+        <Text style={styles.detailCategoryLabel}>가사 | 릴레이</Text>
+        <Text style={styles.detailTitle}>
+          엄마&gt;동생&gt;아빠&gt;누나 손으로 로봇청소기 돌리기
+        </Text>
+      </View>
+
+      {/* 진행 dots + 로봇 + 라인 */}
+      <View style={styles.detailProgressWrapper}>
+        <View style={styles.detailProgressDotsRow}>
+          <View style={styles.detailDotDone} />
+          <View style={styles.detailDotDone} />
+          <Image
+            source={require('../../assets/images/Robot.png')}
+            style={styles.detailRobotIcon}
+          />
+          <View style={styles.detailDotYet} />
+        </View>
+
+        <View style={styles.detailProgressLineBg}>
+          <View style={styles.detailProgressLineFill} />
+        </View>
+      </View>
+
+      {/* 진행 상태 말풍선들 */}
+      <View style={styles.progressBubbleRow}>
+        {/* 엄마 */}
+        <View style={styles.progressBubble}>
+          <View style={styles.progressBubbleTail} />
+          <Text style={styles.progressBubbleText}>엄마{'\n'}10/1 완료!</Text>
+        </View>
+
+        {/* 동생 */}
+        <View style={styles.progressBubble}>
+          <View style={styles.progressBubbleTail} />
+          <Text style={styles.progressBubbleText}>동생{'\n'}10/3 완료!</Text>
+        </View>
+
+        {/* 아빠 */}
+        <View style={styles.progressBubble}>
+          <View style={styles.progressBubbleTail} />
+          <Text style={styles.progressBubbleText}>아빠{'\n'}10/5 완료!</Text>
+        </View>
+      </View>
+
+      {/* 기간 / 모드 / 포인트 */}
+      <View style={styles.detailMetaPillRow}>
+        <View style={styles.detailMetaPill}>
+          <Text style={styles.detailMetaPillText}>기간: 1주</Text>
+        </View>
+        <View style={styles.detailMetaPill}>
+          <Text style={styles.detailMetaPillText}>모드: easy</Text>
+        </View>
+        <View style={styles.detailMetaPill}>
+          <Text style={styles.detailMetaPillText}>포인트: 50p</Text>
+        </View>
+      </View>
+
+      {/* 구분선 */}
+      <View style={styles.detailDivider} />
+
+      {/* 댓글 영역 */}
+      <View style={styles.commentSection}>
+        <Text style={styles.commentCountLabel}>댓글 3개</Text>
+
+        {/* 댓글 1 */}
+        <View style={styles.commentRow}>
+          <View style={styles.commentAvatarWrapper}>
+            <Image
+              source={require('../../assets/images/user1.png')}
+              style={styles.commentAvatar}
+            />
+          </View>
+          <View style={styles.commentContent}>
+            <Text style={styles.commentAuthor}>누나</Text>
+            <Text style={styles.commentText}>이따가 제가 돌릴게요!</Text>
+            <Text style={styles.commentMeta}>2025.10.08. 16:30 답글쓰기</Text>
+          </View>
+          <View style={styles.commentLikeBox}>
+            <Image
+              source={require('../../assets/images/heart-black.png')}
+              style={styles.commentLikeIcon}
+            />
+            <Text style={styles.commentLikeCount}>3</Text>
+          </View>
+        </View>
+
+        <View style={styles.commentInnerDivider} />
+
+        {/* 댓글 2 */}
+        <View style={[styles.commentRow, styles.commentRowDad]}>
+          <View style={styles.commentAvatarWrapper}>
+            <Image
+              source={require('../../assets/images/user2.png')}
+              style={styles.commentAvatar}
+            />
+          </View>
+          <View style={styles.commentContent}>
+            <Text style={styles.commentAuthor}>아빠</Text>
+            <Text style={styles.commentText}>그래. 화이팅!</Text>
+            <Text style={styles.commentMeta}>2025.10.08. 16:30 답글쓰기</Text>
+          </View>
+          <View style={styles.commentLikeBox}>
+            <Image
+              source={require('../../assets/images/heart-red.png')}
+              style={styles.commentLikeIcon}
+            />
+            <Text style={styles.commentLikeCount}>1</Text>
+          </View>
+        </View>
+
+        <View style={styles.commentInnerDivider} />
+
+        {/* 댓글 3 */}
+        <View style={styles.commentRow}>
+          <View style={styles.commentAvatarWrapper}>
+            <Image
+              source={require('../../assets/images/user3.png')}
+              style={styles.commentAvatar}
+            />
+          </View>
+          <View style={styles.commentContent}>
+            <Text style={styles.commentAuthor}>동생</Text>
+            <Text style={styles.commentText}>누나만 하면 50포인트다~</Text>
+            <Text style={styles.commentMeta}>2025.10.08. 16:30 답글쓰기</Text>
+          </View>
+          <View style={styles.commentLikeBox}>
+            <Image
+              source={require('../../assets/images/heart-red.png')}
+              style={styles.commentLikeIcon}
+            />
+            <Text style={styles.commentLikeCount}>2</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* 댓글 입력 바 */}
+      <View style={styles.commentInputBar}>
+        <TextInput
+          style={styles.commentInput}
+          placeholder="응원의 댓글을 입력해주세요 :)"
+          placeholderTextColor="#A3A3A3"
+        />
+        <TouchableOpacity style={styles.commentSendButton}>
+          <Text style={styles.commentSendText}>전송</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 /* ============ 메인 스크린 ============ */
 
 export function Challenge() {
+  const [showDetail, setShowDetail] = useState(false);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -401,14 +590,21 @@ export function Challenge() {
         <View style={styles.main}>
           <CategoryFilterGroup />
           <MyChallengeSection />
-          <ChallengeProgressSection />
+          <ChallengeProgressSection
+            onPressRelayDetail={() => setShowDetail(true)}
+          />
           <RecommendedChallengeSection />
         </View>
 
         <PageIndicatorDots />
       </ScrollView>
-
       <BottomTabBar />
+      {/* 상세 바텀시트 오버레이 */}
+      {showDetail && (
+        <View style={styles.detailSheetWrapper}>
+          <ChallengeDetail onClose={() => setShowDetail(false)} />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -846,6 +1042,290 @@ const styles = StyleSheet.create({
   tabIcon: {
     width: 50,
     height: 50,
+  },
+  /* ===== 상세 하단시트 ===== */
+
+  detailSheetWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 1, // 탭바 위
+    alignItems: 'center',
+  },
+  detailContainer: {
+    width: '100%',
+    maxWidth: 393,
+    height: 600,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    paddingTop: 8,
+    paddingHorizontal: 24,
+  },
+  detailArrowButton: {
+    alignSelf: 'center',
+    marginBottom: 0,
+  },
+  detailArrowIcon: {
+    width: 31,
+    height: 43,
+    resizeMode: 'contain',
+  },
+  detailHeader: {
+    marginBottom: -7,
+    marginLeft: 20,
+  },
+  detailCategoryLabel: {
+    color: '#A0A0A0',
+    fontFamily: 'Roboto',
+    fontSize: 15,
+    marginBottom: 7,
+  },
+  detailTitle: {
+    width: 298,
+    color: '#353535',
+    fontFamily: 'Roboto',
+    fontSize: 15,
+  },
+
+  detailProgressWrapper: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  detailProgressDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 54,
+    marginBottom: -33,
+  },
+  detailDotDone: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#5E75FD',
+  },
+  detailDotYet: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#D9D9D9',
+  },
+  detailRobotIcon: {
+    width: 60,
+    height: 59,
+    resizeMode: 'contain',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    zIndex: 10,
+  },
+  detailProgressLineBg: {
+    width: 243,
+    height: 6,
+    borderRadius: 10,
+    backgroundColor: '#D9D9D9',
+    overflow: 'hidden',
+    alignItems: 'flex-start',
+  },
+  detailProgressLineFill: {
+    width: 164,
+    height: 6,
+    borderRadius: 10,
+    backgroundColor: '#5E75FD',
+  },
+
+  progressBubbleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start', // ✅ 왼쪽 정렬
+    columnGap: 10, // ✅ 버블 사이 간격 (기존보다 좁게 조정)
+    paddingHorizontal: 0, // ✅ 기존 패딩 제거 (좌우 간격 넓힐 때만 필요)
+    marginTop: 10,
+    marginBottom: 7,
+    marginLeft: 15, // ✅ 전체를 왼쪽으로 옮기고 싶을 때 조정 (값 작일수록 왼쪽으로)
+  },
+
+  progressBubble: {
+    backgroundColor: '#353535',
+    borderRadius: 30,
+    paddingHorizontal: 2,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 70,
+    position: 'relative', // <- 삼각형 꼬리를 내부에 두기 위해 필요
+  },
+
+  progressBubbleText: {
+    color: '#FFFFFF',
+    fontFamily: 'Roboto',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+
+  progressBubbleTail: {
+    position: 'absolute',
+    top: -6,
+    left: '50%',
+    marginLeft: -6,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#353535',
+  },
+
+  detailMetaPillRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    columnGap: 11,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  detailMetaPill: {
+    width: 91,
+    height: 19,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#353535',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailMetaPillText: {
+    fontSize: 12,
+    color: '#353535',
+    fontFamily: 'Roboto',
+  },
+  detailDivider: {
+    height: 1,
+    width: '120%',
+    backgroundColor: '#E0E0E0',
+    marginLeft: -24,
+    marginRight: -24,
+    marginBottom: 8,
+  },
+
+  /* 댓글 리스트 */
+  commentSection: {
+    flex: 1,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+  },
+  commentCountLabel: {
+    color: '#A0A0A0',
+    fontFamily: 'Roboto',
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  commentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+  },
+  commentRowDad: {
+    marginLeft: 40, // 숫자 키워서 원하는 만큼 이동해 봐
+    // 또는 paddingLeft: 12,
+  },
+  commentAvatarWrapper: {
+    width: 37,
+    height: 37,
+    borderRadius: 18.5,
+    backgroundColor: '#D9D9D9',
+    overflow: 'hidden',
+    marginRight: 15,
+  },
+  commentAvatar: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  commentContent: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  commentAuthor: {
+    color: '#353535',
+    fontFamily: 'Roboto',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  commentText: {
+    color: '#353535',
+    fontFamily: 'Roboto',
+    fontSize: 15,
+    marginBottom: 2,
+  },
+  commentMeta: {
+    color: '#A0A0A0',
+    fontFamily: 'Roboto',
+    fontSize: 13,
+  },
+  commentLikeBox: {
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  commentLikeIcon: {
+    width: 21,
+    height: 21,
+    resizeMode: 'contain',
+    marginBottom: 2,
+  },
+  commentLikeCount: {
+    color: '#A0A0A0',
+    fontFamily: 'Roboto',
+    fontSize: 13,
+  },
+  commentInnerDivider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 4,
+  },
+
+  /* 댓글 입력 바 */
+  commentInputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginHorizontal: -24,
+    marginBottom: 10,
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#F6F6F6',
+    borderRadius: 30,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontFamily: 'Roboto',
+    fontSize: 16,
+    color: '#353535',
+    marginRight: 8,
+    height: 41,
+  },
+  commentSendButton: {
+    width: 56,
+    height: 41,
+    borderRadius: 30,
+    backgroundColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentSendText: {
+    fontFamily: 'Roboto',
+    fontSize: 16,
+    color: '#A0A0A0',
   },
 });
 
