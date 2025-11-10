@@ -1,4 +1,5 @@
 // src/screens/OnboardingFamily.tsx
+import { useRouter } from 'expo-router'; // ✅ 추가
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -11,6 +12,8 @@ import {
 } from 'react-native';
 
 export default function OnboardingFamily() {
+  const router = useRouter(); // ✅ 추가
+
   // mode: 'code' = 가족 코드 입력, 'new' = 새 가족 만들기
   const [mode, setMode] = useState<'code' | 'new'>('code');
   const [familyCode, setFamilyCode] = useState('');
@@ -155,7 +158,11 @@ export default function OnboardingFamily() {
             activeOpacity={isStartDisabled ? 1 : 0.8}
             onPress={() => {
               if (isStartDisabled) return;
-              // TODO: 실제 시작 로직(홈 화면 이동 등)
+              // ✅ 여기서 홈 탭으로 이동
+              // 홈 탭이 app/(tabs)/index.tsx 라면:
+              // router.replace('/(tabs)');
+              // 만약 home.tsx 같은 이름이면 그 경로로 바꿔줘
+              router.replace('/(tabs)/four');
             }}
           >
             <Text
@@ -175,6 +182,7 @@ export default function OnboardingFamily() {
   );
 }
 
+// 이하 styles 그대로…
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -185,12 +193,10 @@ const styles = StyleSheet.create({
     paddingTop: 86,
     paddingHorizontal: 24,
   },
-
-  /* 진행바 */
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 50,
   },
   progressBarTrack: {
     flex: 1,
@@ -211,23 +217,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
     fontWeight: '500',
   },
-
   title: {
     fontSize: 24,
     fontWeight: '700',
     fontFamily: 'Roboto',
     color: '#353535',
-    marginBottom: 8,
+    marginBottom: 13,
   },
   desc: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Roboto',
     color: '#353535',
     lineHeight: 20,
     marginBottom: 28,
+    fontWeight: '400',
   },
-
-  /* 라디오 영역 */
   radioGroup: {
     marginBottom: 16,
   },
@@ -256,12 +260,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#353535',
   },
   radioLabel: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'Roboto',
     color: '#353535',
+    fontWeight: '600',
   },
-
-  /* 가족 코드 입력 */
   codeInputWrapper: {
     height: 46,
     borderRadius: 8,
@@ -271,11 +274,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   codeInput: {
-    fontSize: 14,
-    color: '#353535',
+    fontSize: 16,
+    color: '#A3A3A3',
+    fontWeight: '400',
   },
-
-  /* 새 가족 만들기 */
   newFamilyArea: {
     marginTop: 4,
   },
@@ -296,8 +298,9 @@ const styles = StyleSheet.create({
   },
   nicknameInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 16,
     color: '#353535',
+    fontWeight: '400',
   },
   clearButton: {
     width: 24,
@@ -319,12 +322,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dupButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#A0A0A0',
     fontFamily: 'Roboto',
     fontWeight: '500',
   },
-
   inviteBox: {
     height: 80,
     borderRadius: 8,
@@ -334,10 +336,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   inviteLabel: {
-    fontSize: 13,
-    color: '#A0A0A0',
+    fontSize: 14,
+    color: '#353535',
     fontFamily: 'Roboto',
     marginBottom: 4,
+    fontWeight: '400',
   },
   inviteCode: {
     fontSize: 18,
@@ -345,7 +348,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
     color: '#353535',
   },
-
   inviteButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -361,13 +363,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inviteButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Roboto',
     color: '#FFFFFF',
     fontWeight: '500',
   },
-
-  /* 하단 버튼 */
   bottomArea: {
     marginTop: 'auto',
     marginBottom: 32,
