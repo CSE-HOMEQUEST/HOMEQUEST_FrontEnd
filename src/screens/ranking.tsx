@@ -1,4 +1,5 @@
 // src/screens/Ranking.tsx
+import { router } from 'expo-router';
 import React, { useState, useRef } from 'react';
 import {
   SafeAreaView,
@@ -17,7 +18,10 @@ function Header() {
       <Text style={styles.headerLogo}>HomeQuest</Text>
 
       {/* SettingButton */}
-      <TouchableOpacity style={styles.settingButton}>
+      <TouchableOpacity
+        style={styles.settingButton}
+        onPress={() => router.push('/Setting')}
+      >
         <Image
           source={require('../../assets/images/SettingButton.png')}
           style={styles.settingIcon}

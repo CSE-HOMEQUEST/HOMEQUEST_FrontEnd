@@ -275,7 +275,7 @@ function BottomTabBar() {
     <View style={styles.bottomTabBar}>
       <TouchableOpacity activeOpacity={0.7}>
         <Image
-          source={require('../../assets/bars/home.png')}
+          source={require('../../assets/images/home.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>

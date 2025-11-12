@@ -57,7 +57,7 @@ export default function LoginScreen() {
         {/* ThinQ 계정으로 계속하기 */}
         <TouchableOpacity style={styles.thinqButton} activeOpacity={0.8}>
           <Image
-            source={require('../assets/images/ThinQLogo.png')}
+            source={require('../assets/images/ThinQLogo.png')}
             style={styles.thinqLogo}
           />
           <Text style={styles.thinqText}>ThinQ 계정으로 계속하기</Text>

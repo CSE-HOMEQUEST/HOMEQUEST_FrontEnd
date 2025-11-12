@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Image,
@@ -17,7 +18,10 @@ function Header() {
       <Text style={styles.headerLogo}>HomeQuest</Text>
 
       {/* SettingButton */}
-      <TouchableOpacity style={styles.settingButton}>
+      <TouchableOpacity
+        style={styles.settingButton}
+        onPress={() => router.push('/Setting')}
+      >
         <Image
           source={require('../../assets/images/SettingButton.png')}
           style={styles.settingIcon}
