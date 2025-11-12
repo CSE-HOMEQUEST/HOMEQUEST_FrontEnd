@@ -359,9 +359,7 @@ function BottomTabBar() {
       <TouchableOpacity
         style={styles.tabButton}
         activeOpacity={0.7}
-        onPress={() => {
-          // TODO: Home 탭으로 이동
-        }}
+        onPress={() => router.push('/')}
       >
         <Image
           source={require('../../assets/images/home.png')}
@@ -385,9 +383,7 @@ function BottomTabBar() {
       <TouchableOpacity
         style={styles.tabButton}
         activeOpacity={0.7}
-        onPress={() => {
-          // TODO: Reward 탭으로 이동
-        }}
+        onPress={() => router.push('/three')}
       >
         <Image
           source={require('../../assets/images/reward.png')}
@@ -398,9 +394,7 @@ function BottomTabBar() {
       <TouchableOpacity
         style={styles.tabButton}
         activeOpacity={0.7}
-        onPress={() => {
-          // TODO: Ranking 탭으로 이동
-        }}
+        onPress={() => router.push('/four')}
       >
         <Image
           source={require('../../assets/images/ranking.png')}
@@ -688,7 +682,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   categoryButton: {
-    width: 63,
+    width: 68,
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 30,

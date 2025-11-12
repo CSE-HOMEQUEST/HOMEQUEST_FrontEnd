@@ -1,6 +1,7 @@
 // src/screens/RewardScreen.tsx
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -273,13 +274,13 @@ function RewardContent() {
 function BottomTabBar() {
   return (
     <View style={styles.bottomTabBar}>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/')}>
         <Image
           source={require('../../assets/images/home.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/two')}>
         <Image
           source={require('../../assets/bars/challenge.png')}
           style={styles.tabIcon}
@@ -291,7 +292,10 @@ function BottomTabBar() {
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/four')}
+      >
         <Image
           source={require('../../assets/bars/ranking.png')}
           style={styles.tabIcon}

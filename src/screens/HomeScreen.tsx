@@ -1,6 +1,7 @@
 // src/screens/Home.tsx
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -242,21 +243,33 @@ function BottomTabBar() {
         />
       </TouchableOpacity>
 
-      <TouchableOpacity activeOpacity={0.7} style={styles.tabButton}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        style={styles.tabButton}
+        onPress={() => router.push('/two')}
+      >
         <Image
           source={require('../../assets/bars/challenge.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
 
-      <TouchableOpacity activeOpacity={0.7} style={styles.tabButton}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        style={styles.tabButton}
+        onPress={() => router.push('/three')}
+      >
         <Image
           source={require('../../assets/bars/reward.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
 
-      <TouchableOpacity activeOpacity={0.7} style={styles.tabButton}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        style={styles.tabButton}
+        onPress={() => router.push('/four')}
+      >
         <Image
           source={require('../../assets/bars/ranking.png')}
           style={styles.tabIcon}

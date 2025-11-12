@@ -1,6 +1,7 @@
 // src/screens/MarketScreen.tsx
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { router } from 'expo-router';
 import React from 'react';
 import {
   SafeAreaView,
@@ -154,23 +155,29 @@ function BottomTabBar() {
     <View style={styles.bottomTabBar}>
       <TouchableOpacity activeOpacity={0.7}>
         <Image
-          source={require('../../assets/bars/home.png')}
+          source={require('../../assets/images/home.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/two')}>
         <Image
           source={require('../../assets/bars/challenge.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/three')}
+      >
         <Image
           source={require('../../assets/bars/reward_active.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/four')}
+      >
         <Image
           source={require('../../assets/bars/ranking.png')}
           style={styles.tabIcon}
