@@ -1,28 +1,27 @@
+// app/_layout.tsx
+
 import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
 } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/src/components/useColorScheme';
+import { useAuthStore } from '@/src/store/useAuthStore'; // ✅ Zustand store 추가
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -32,36 +31,51 @@ export default function RootLayout() {
     Roboto: require('../assets/fonts/Roboto.ttf'),
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
+    if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  if (!loaded) return null;
 
   return <RootLayoutNav />;
 }
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { token } = useAuthStore(); // ✅ Zustand에서 로그인 상태 불러오기
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // ✅ 로그인 상태 감시해서 자동 이동
+  useEffect(() => {
+    const isLoggedIn = !!token;
+    const isLoginPage = pathname === '/login';
+
+    if (!isLoggedIn && !isLoginPage) {
+      router.replace('/login');
+    } else if (isLoggedIn && isLoginPage) {
+      router.replace('/(tabs)');
+    }
+  }, [token, pathname, router]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={styles.root}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="Setting" options={{ title: '����' }} />{' '}
-          {/* ? �߰� */}
+          <Stack.Screen name="Setting" options={{ title: '설정' }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />{' '}
+          {/* ✅ 로그인 페이지 등록 */}
         </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

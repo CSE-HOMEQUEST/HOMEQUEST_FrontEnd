@@ -1,6 +1,7 @@
 // src/screens/Setting.tsx
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import {
   View,
@@ -10,7 +11,10 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  Alert,
 } from 'react-native';
+
+import { useAuthStore } from '@/src/store/useAuthStore';
 
 /* ────────────── Header ────────────── */
 function Header() {
@@ -102,9 +106,36 @@ function SettingList() {
 
 /* ────────────── Logout Button ────────────── */
 function LogoutButton() {
+  const { logout, isLoading } = useAuthStore();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    Alert.alert('로그아웃', '정말 로그아웃할까요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '로그아웃',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await logout(); // 토큰/유저 초기화 (+ 서버 revoke가 있다면 여기서)
+          } finally {
+            router.replace('/login'); // 스택 리셋하여 뒤로가기 방지
+            // 참고: _layout의 가드가 있다면 이 줄 없이도 /login으로 이동하지만 UX상 명시가 더 깔끔
+          }
+        },
+      },
+    ]);
+  };
+
   return (
-    <TouchableOpacity style={styles.logoutButton}>
-      <Text style={styles.logoutText}>로그아웃</Text>
+    <TouchableOpacity
+      style={[styles.logoutButton, isLoading && { opacity: 0.6 }]}
+      disabled={isLoading}
+      onPress={handleLogout}
+    >
+      <Text style={styles.logoutText}>
+        {isLoading ? '로그아웃 중...' : '로그아웃'}
+      </Text>
     </TouchableOpacity>
   );
 }

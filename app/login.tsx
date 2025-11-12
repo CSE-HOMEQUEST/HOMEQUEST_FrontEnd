@@ -1,6 +1,6 @@
 // app/login.tsx
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -13,8 +13,28 @@ import {
   View,
 } from 'react-native';
 
+import { useAuthStore } from '@/src/store/useAuthStore';
+
 export default function LoginScreen() {
   const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { login, isLoading, token } = useAuthStore();
+
+  useEffect(() => {
+    if (token) {
+      router.replace('/(tabs)');
+    }
+  }, [token, router]);
+
+  const handleLogin = async () => {
+    try {
+      await login(email, password);
+    } catch (e) {
+      console.log('로그인 실패:', e);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -29,6 +49,8 @@ export default function LoginScreen() {
           style={styles.input}
           placeholder="아이디 입력"
           placeholderTextColor="#C4C4C4"
+          value={email}
+          onChangeText={setEmail}
         />
 
         {/* 비밀번호 입력 */}
@@ -37,18 +59,20 @@ export default function LoginScreen() {
           placeholder="비밀번호 입력"
           placeholderTextColor="#C4C4C4"
           secureTextEntry
+          value={password}
+          onChangeText={setPassword}
         />
 
         {/* 로그인 버튼 */}
         <TouchableOpacity
           style={styles.loginButton}
           activeOpacity={0.8}
-          onPress={() => {
-            // TODO: 나중에 실제 로그인 로직 성공 시에만 실행
-            router.replace('/onboarding-profile');
-          }}
+          disabled={isLoading}
+          onPress={handleLogin}
         >
-          <Text style={styles.loginButtonText}>로그인</Text>
+          <Text style={styles.loginButtonText}>
+            {isLoading ? '로그인 중...' : '로그인'}
+          </Text>
         </TouchableOpacity>
 
         {/* 또는 구분선 */}
