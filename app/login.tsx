@@ -19,13 +19,18 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, isLoading, token } = useAuthStore();
+  const { login, isLoading, token, user, hydrateDone } = useAuthStore();
 
   useEffect(() => {
-    if (token) {
+    if (!hydrateDone) return; // ✅ 스토어 수화 완료 후에만
+    if (!token) return;
+
+    if (user?.firstLogin) {
+      router.replace('/onboarding-profile');
+    } else {
       router.replace('/(tabs)');
     }
-  }, [token, router]);
+  }, [hydrateDone, token, user, router]);
 
   const handleLogin = async () => {
     try {
@@ -59,6 +64,9 @@ export default function LoginScreen() {
           placeholder="비밀번호 입력"
           placeholderTextColor="#C4C4C4"
           secureTextEntry
+          textContentType="none" // ✅ 자동 비밀번호 제안 끔
+          autoComplete="off"
+          autoCorrect={false}
           value={password}
           onChangeText={setPassword}
         />

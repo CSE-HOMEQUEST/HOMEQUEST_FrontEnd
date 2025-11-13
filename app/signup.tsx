@@ -82,12 +82,18 @@ export default function SignupScreen() {
               placeholder="비밀번호"
               placeholderTextColor="#C4C4C4"
               secureTextEntry
+              textContentType="none"
+              autoComplete="off"
+              autoCorrect={false}
             />
             <TextInput
-              style={[styles.input, { marginTop: 8 }]}
+              style={[styles.input, styles.inputGap]}
               placeholder="비밀번호 확인"
               placeholderTextColor="#C4C4C4"
               secureTextEntry
+              textContentType="none"
+              autoComplete="off"
+              autoCorrect={false}
             />
           </View>
 
@@ -249,6 +255,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     tintColor: '#C4C4C4',
   },
+  inputGap: { marginTop: 8 },
 
   /* 오른쪽 작은 버튼 (중복확인 / 인증번호 받기) */
   smallButton: {

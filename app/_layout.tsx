@@ -46,17 +46,19 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const { token } = useAuthStore(); // ✅ Zustand에서 로그인 상태 불러오기
+  const { token, hydrateDone } = useAuthStore(); // ✅ Zustand에서 로그인 상태 불러오기
   const router = useRouter();
   const pathname = usePathname();
 
   // ✅ 로그인 상태 감시해서 자동 이동
   useEffect(() => {
+    if (!hydrateDone) return;
+
     const isLoggedIn = !!token;
     const isPublic =
       pathname === '/login' ||
       pathname === '/signup' ||
-      pathname.startsWith('/onboarding'); // 선택
+      pathname.startsWith('/onboarding-profile'); // 선택
 
     if (!isLoggedIn && !isPublic) {
       router.replace('/login');
@@ -66,7 +68,7 @@ function RootLayoutNav() {
     ) {
       router.replace('/(tabs)');
     }
-  }, [token, pathname, router]);
+  }, [hydrateDone, token, pathname, router]);
 
   return (
     <GestureHandlerRootView style={styles.root}>
