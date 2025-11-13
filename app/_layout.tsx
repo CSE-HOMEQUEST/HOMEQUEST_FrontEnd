@@ -53,11 +53,17 @@ function RootLayoutNav() {
   // ✅ 로그인 상태 감시해서 자동 이동
   useEffect(() => {
     const isLoggedIn = !!token;
-    const isLoginPage = pathname === '/login';
+    const isPublic =
+      pathname === '/login' ||
+      pathname === '/signup' ||
+      pathname.startsWith('/onboarding'); // 선택
 
-    if (!isLoggedIn && !isLoginPage) {
+    if (!isLoggedIn && !isPublic) {
       router.replace('/login');
-    } else if (isLoggedIn && isLoginPage) {
+    } else if (
+      isLoggedIn &&
+      (pathname === '/login' || pathname === '/signup')
+    ) {
       router.replace('/(tabs)');
     }
   }, [token, pathname, router]);
