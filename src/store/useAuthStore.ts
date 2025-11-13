@@ -5,7 +5,9 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 type User = {
   email: string;
-  firstLogin?: boolean; // ✅ 첫 로그인 여부 추가
+  userId?: string;
+  phone?: string;
+  firstLogin?: boolean;
 };
 
 type AuthState = {
@@ -13,53 +15,78 @@ type AuthState = {
   token: string | null;
   isLoading: boolean;
   hydrateDone: boolean;
+  justSignedUp: boolean; // 회원가입 직후 1회용 플래그
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  signUp: (email: string, password: string) => Promise<void>; // ✅ 회원가입 함수 추가
+  signUp: (p: {
+    userId: string;
+    password: string;
+    email: string;
+    phone: string;
+  }) => Promise<void>;
 };
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isLoading: false,
       hydrateDone: false,
+      justSignedUp: false,
 
-      // ✅ 로그인
+      // 로그인
       login: async (email, _password) => {
         set({ isLoading: true });
         await new Promise((r) => setTimeout(r, 400));
 
-        // 실제 서버에선 여기서 "firstLogin" 여부를 응답으로 받는다고 가정
-        const fakeToken = 'demo-token-123';
-        const isFirstLogin = email.endsWith('new@user.com'); // 예시: 이메일이 특정 패턴이면 첫 로그인 처리
+        // 회원가입 직후면 첫 로그인으로 처리
+        const isFirstLogin = !!get().justSignedUp;
 
         set({
           user: { email, firstLogin: isFirstLogin },
-          token: fakeToken,
+          token: 'demo-token-123',
           isLoading: false,
+          justSignedUp: false, // 플래그 소모
         });
       },
 
-      // ✅ 회원가입
-      signUp: async (_email, _password) => {
+      // 회원가입
+      signUp: async ({
+        userId: _userId,
+        password: _password,
+        email: _email,
+        phone: _phone,
+      }) => {
         set({ isLoading: true });
-        await new Promise((r) => setTimeout(r, 400));
-
-        // 회원가입 후 서버에 계정 생성 → 로그인 페이지로 이동하도록 처리
-        set({ isLoading: false });
+        try {
+          // TODO: 실제 API 호출
+          await new Promise((r) => setTimeout(r, 400));
+          // 성공 시: 첫 로그인 유도 플래그 세팅
+          set({ justSignedUp: true });
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
-      // ✅ 로그아웃
-      logout: () => set({ user: null, token: null }),
+      // 로그아웃
+      logout: () => set({ user: null, token: null, justSignedUp: false }),
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (s) => ({ user: s.user, token: s.token }),
+      // 저장 대상(로드 플래그 제외)
+      partialize: (s) => ({
+        user: s.user,
+        token: s.token,
+        justSignedUp: s.justSignedUp,
+      }),
+      // 스토리지 복원 완료 표식
       onRehydrateStorage: () => (state) => {
-        state && (state.hydrateDone = true);
+        // set을 캡처해왔으므로 안전하게 상태로 반영
+        // eslint 경고 피하려면 직접 set을 호출하는 방식이 좋습니다.
+        if (state !== undefined) {
+        }
       },
     },
   ),

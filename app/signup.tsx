@@ -1,6 +1,6 @@
 // app/signup.tsx
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   SafeAreaView,
   View,
@@ -14,8 +14,48 @@ import {
   Platform,
 } from 'react-native';
 
+import { useAuthStore } from '@/src/store/useAuthStore';
+
 export default function SignupScreen() {
   const router = useRouter();
+  const { signUp, isLoading } = useAuthStore();
+
+  const [userId, setUserId] = useState('');
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [emailLocal, setEmailLocal] = useState('');
+  const [emailDomain, setEmailDomain] = useState<string | null>(null);
+  const [phone, setPhone] = useState('');
+
+  // ✅ 이메일 조합 (왼쪽에 전체 이메일 입력 가능)
+  const email = useMemo(() => {
+    const v = emailLocal.trim();
+    if (v.includes('@')) return v; // @ 포함 시 그대로 사용
+    if (emailDomain) return `${v}@${emailDomain}`;
+    return '';
+  }, [emailLocal, emailDomain]);
+
+  // ✅ 검증 함수들
+  const isValidEmail = (s: string) => /\S+@\S+\.\S+/.test(s); // 기존보다 느슨
+  const isValidPhone = (s: string) => /^01[0-9]\d{7,8}$/.test(s);
+  const canSubmit =
+    userId.trim().length > 0 &&
+    password.length > 0 &&
+    password === password2 &&
+    isValidEmail(email) &&
+    isValidPhone(phone) &&
+    !isLoading;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    try {
+      await signUp({ userId, password, email, phone });
+      // 실제로는 {userId, password, email, phone} 등 서버 스펙에 맞추세요
+      router.replace('/login'); // 회원가입 후 로그인 화면으로
+    } catch (e) {
+      console.log('회원가입 오류', e);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -57,6 +97,8 @@ export default function SignupScreen() {
                   style={styles.input}
                   placeholder="아이디"
                   placeholderTextColor="#C4C4C4"
+                  value={userId}
+                  onChangeText={setUserId}
                 />
                 {/* 입력값 지우기 아이콘 */}
                 <TouchableOpacity style={styles.clearButton}>
@@ -82,18 +124,24 @@ export default function SignupScreen() {
               placeholder="비밀번호"
               placeholderTextColor="#C4C4C4"
               secureTextEntry
-              textContentType="none"
+              textContentType="oneTimeCode" // iOS가 비밀번호로 안 봄
               autoComplete="off"
               autoCorrect={false}
+              autoCapitalize="none"
+              value={password} // ✅ 바인딩 추가
+              onChangeText={setPassword}
             />
             <TextInput
               style={[styles.input, styles.inputGap]}
               placeholder="비밀번호 확인"
               placeholderTextColor="#C4C4C4"
               secureTextEntry
-              textContentType="none"
+              textContentType="oneTimeCode" // iOS가 비밀번호로 안 봄
               autoComplete="off"
               autoCorrect={false}
+              autoCapitalize="none"
+              value={password2} // ✅ 바인딩 추가
+              onChangeText={setPassword2}
             />
           </View>
 
@@ -106,6 +154,8 @@ export default function SignupScreen() {
                 style={[styles.input, styles.emailLeftInput]}
                 placeholder="이메일"
                 placeholderTextColor="#C4C4C4"
+                value={emailLocal}
+                onChangeText={setEmailLocal}
               />
 
               <Text style={styles.atText}>@</Text>
@@ -113,9 +163,12 @@ export default function SignupScreen() {
               <TouchableOpacity
                 style={[styles.input, styles.emailRightInput]}
                 activeOpacity={0.8}
+                onPress={() => setEmailDomain('gmail.com')}
               >
                 <View style={styles.emailRightInner}>
-                  <Text style={styles.emailRightPlaceholder}>선택</Text>
+                  <Text style={styles.emailRightPlaceholder}>
+                    {emailDomain || '선택'}
+                  </Text>
                   <Image
                     source={require('../assets/images/si_expand-more-duotone.png')}
                     style={styles.dropdownIcon}
@@ -135,6 +188,8 @@ export default function SignupScreen() {
                 placeholder="휴대폰 번호"
                 placeholderTextColor="#C4C4C4"
                 keyboardType="number-pad"
+                value={phone}
+                onChangeText={setPhone}
               />
 
               <TouchableOpacity style={styles.smallButton} activeOpacity={0.8}>
@@ -145,10 +200,22 @@ export default function SignupScreen() {
 
           {/* 가입하기 (비활성화 스타일) */}
           <TouchableOpacity
-            style={styles.submitButtonDisabled}
-            activeOpacity={1}
+            style={[
+              styles.submitButtonDisabled,
+              canSubmit && { backgroundColor: '#353535' },
+            ]}
+            activeOpacity={canSubmit ? 0.8 : 1}
+            disabled={!canSubmit || isLoading}
+            onPress={handleSubmit}
           >
-            <Text style={styles.submitButtonTextDisabled}>가입하기</Text>
+            <Text
+              style={[
+                styles.submitButtonTextDisabled,
+                canSubmit && { color: '#FFFFFF' },
+              ]}
+            >
+              {isLoading ? '처리 중...' : '가입하기'}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

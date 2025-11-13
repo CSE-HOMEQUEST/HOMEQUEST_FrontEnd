@@ -153,7 +153,10 @@ function MarketContent() {
 function BottomTabBar() {
   return (
     <View style={styles.bottomTabBar}>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/(tabs)')}
+      >
         <Image
           source={require('../../assets/images/home.png')}
           style={styles.tabIcon}

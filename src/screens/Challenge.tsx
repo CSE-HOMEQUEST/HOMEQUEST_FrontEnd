@@ -727,9 +727,8 @@ const styles = StyleSheet.create({
     // 여기서 원하는 것만 덮어쓰기
     // 예시) 색, 마진, 폰트 굵기 등
     marginBottom: -17,
-    color: '#000000',
+    color: '#353535',
     marginLeft: 20,
-    // fontWeight: '700',
   },
 
   /* 나의 챌린지 현황 */
