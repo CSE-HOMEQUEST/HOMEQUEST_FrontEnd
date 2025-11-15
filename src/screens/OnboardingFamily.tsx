@@ -162,7 +162,7 @@ export default function OnboardingFamily() {
               // 홈 탭이 app/(tabs)/index.tsx 라면:
               // router.replace('/(tabs)');
               // 만약 home.tsx 같은 이름이면 그 경로로 바꿔줘
-              router.replace('/(tabs)/four');
+              router.replace('/(tabs)');
             }}
           >
             <Text

@@ -122,11 +122,7 @@ type RandomBoxProps = {
 
 function RandomBox({ onPress }: RandomBoxProps) {
   return (
-    <TouchableOpacity
-      style={styles.randomBox}
-      activeOpacity={0.8}
-      onPress={onPress}
-    >
+    <TouchableOpacity style={styles.randomBox} onPress={onPress}>
       <Image
         source={require('../../assets/images/RandomBox.png')}
         style={styles.randomBoxImage}
@@ -135,6 +131,32 @@ function RandomBox({ onPress }: RandomBoxProps) {
         <View style={styles.randomGaugeFill} />
       </View>
     </TouchableOpacity>
+  );
+}
+
+type RewardModalProps = {
+  point: number;
+  onClose: () => void;
+};
+
+function RewardModal({ point, onClose }: RewardModalProps) {
+  return (
+    <View style={styles.rewardBackdrop}>
+      <View style={styles.rewardCard}>
+        <Text style={styles.rewardTitle}>축하합니다!</Text>
+        <Text style={styles.rewardPoint}>+{point}p</Text>
+
+        <Image
+          source={require('../../assets/images/BoxOpen.png')}
+          style={styles.rewardImage}
+          resizeMode="contain"
+        />
+
+        <TouchableOpacity style={styles.rewardButton} onPress={onClose}>
+          <Text style={styles.rewardButtonText}>확인</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -339,6 +361,8 @@ export function Ranking() {
     height: number;
   } | null>(null);
 
+  const [showReward, setShowReward] = useState(false);
+
   // 화면 진입 로그
   useEffect(() => {
     logRankingEvent('screen_view');
@@ -364,12 +388,7 @@ export function Ranking() {
                 setShowTooltip(true);
               }}
             />
-            <RandomBox
-              onPress={() => {
-                logRankingEvent('random_box_press');
-                // 나중에 상자깡 화면으로 이동 / 모달 열기 등 연결
-              }}
-            />
+            <RandomBox onPress={() => setShowReward(true)} />
           </View>
 
           <View style={styles.top3Row}>
@@ -471,6 +490,10 @@ export function Ranking() {
             </TouchableOpacity>
           </View>
         </View>
+      )}
+
+      {showReward && (
+        <RewardModal point={300} onClose={() => setShowReward(false)} />
       )}
 
       <BottomTabBar />
@@ -883,5 +906,53 @@ const styles = StyleSheet.create({
   tabIcon: {
     width: 50,
     height: 50,
+  },
+
+  rewardBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rewardCard: {
+    width: 280,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    alignItems: 'center',
+  },
+  rewardTitle: {
+    fontSize: 18,
+    color: '#222222',
+    marginBottom: 4,
+  },
+  rewardPoint: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 16,
+  },
+  rewardImage: {
+    width: 250,
+    height: 180,
+    marginBottom: 15,
+  },
+  rewardButton: {
+    width: '100%',
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#222222',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rewardButtonText: {
+    fontSize: 16,
+    color: '#FFFFFF',
   },
 });
