@@ -9,7 +9,6 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -46,7 +45,7 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const { token, hydrateDone } = useAuthStore(); // ✅ Zustand에서 로그인 상태 불러오기
+  const { token, user, hydrateDone } = useAuthStore(); // ✅ Zustand에서 로그인 상태 불러오기
   const router = useRouter();
   const pathname = usePathname();
 
@@ -55,35 +54,43 @@ function RootLayoutNav() {
     if (!hydrateDone) return;
 
     const isLoggedIn = !!token;
-    const isPublic =
-      pathname === '/login' ||
-      pathname === '/signup' ||
-      pathname.startsWith('/onboarding-profile'); // 선택
+    const PUBLIC = [
+      '/login',
+      '/signup',
+      '/onboarding-profile',
+      '/onboarding-family',
+      '/onboarding-avatar',
+    ];
+
+    const isPublic = PUBLIC.includes(pathname);
 
     if (!isLoggedIn && !isPublic) {
       router.replace('/login');
-    } else if (
+    }
+
+    if (
       isLoggedIn &&
-      (pathname === '/login' || pathname === '/signup')
+      (pathname === '/login' || pathname === '/signup') &&
+      !user?.firstLogin // 첫 로그인이면 탭으로 이동 금지
     ) {
       router.replace('/(tabs)');
     }
-  }, [hydrateDone, token, pathname, router]);
+  }, [hydrateDone, token, pathname, user?.firstLogin, router]);
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="signup" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="onboarding-profile"
+            options={{ headerShown: false }}
+          />
           <Stack.Screen name="Setting" options={{ title: '설정' }} />
-          <Stack.Screen name="login" options={{ headerShown: false }} />{' '}
-          {/* ✅ 로그인 페이지 등록 */}
         </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-});

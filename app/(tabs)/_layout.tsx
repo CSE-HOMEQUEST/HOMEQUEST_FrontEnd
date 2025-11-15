@@ -3,7 +3,6 @@ import { Link, Tabs } from 'expo-router';
 import React from 'react';
 import { Pressable } from 'react-native';
 
-import { useClientOnlyValue } from '@/src/components/useClientOnlyValue';
 import { useColorScheme } from '@/src/components/useColorScheme';
 import Colors from '@/src/constants/colors';
 
@@ -21,10 +20,12 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
+        // 상단 까만 헤더 제거
+        headerShown: false,
+        // 기본 탭 바 숨기기 (우리는 화면 안에 커스텀 BottomTabBar를 쓰니까)
+        tabBarStyle: {
+          display: 'none',
+        },
       }}
     >
       <Tabs.Screen

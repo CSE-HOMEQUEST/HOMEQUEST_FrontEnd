@@ -327,7 +327,6 @@ const styles = StyleSheet.create({
   header: {
     width: '100%',
     height: 53,
-    marginTop: 50,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -445,8 +444,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     padding: 20,
-    height: 524,
-    marginBottom: 89,
+    height: 600,
+
     alignItems: 'center',
   },
   modalCloseButton: { position: 'absolute', marginTop: 15 },

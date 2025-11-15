@@ -16,6 +16,7 @@ type AuthState = {
   isLoading: boolean;
   hydrateDone: boolean;
   justSignedUp: boolean; // 회원가입 직후 1회용 플래그
+
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   signUp: (p: {
@@ -24,6 +25,9 @@ type AuthState = {
     email: string;
     phone: string;
   }) => Promise<void>;
+
+  // ✅ 온보딩 완료용 액션 추가
+  finishOnboarding: () => void;
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -40,15 +44,16 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         await new Promise((r) => setTimeout(r, 400));
 
-        // 회원가입 직후면 첫 로그인으로 처리
-        const isFirstLogin = !!get().justSignedUp;
+        // 방금 회원가입한 상태라면 첫 로그인으로 취급
+        const expectFirst = get().justSignedUp;
 
         set({
-          user: { email, firstLogin: isFirstLogin },
+          user: { email, firstLogin: expectFirst },
           token: 'demo-token-123',
           isLoading: false,
           justSignedUp: false, // 플래그 소모
         });
+        console.log('[store:login set]', { email, expectFirst });
       },
 
       // 회원가입
@@ -62,31 +67,47 @@ export const useAuthStore = create<AuthState>()(
         try {
           // TODO: 실제 API 호출
           await new Promise((r) => setTimeout(r, 400));
-          // 성공 시: 첫 로그인 유도 플래그 세팅
+          // 회원가입 성공 → 다음 로그인은 첫 로그인으로
           set({ justSignedUp: true });
+          console.log('[store:signUp] justSignedUp -> true');
         } finally {
           set({ isLoading: false });
         }
       },
 
+      // ✅ 온보딩 완료 처리
+      finishOnboarding: () => {
+        const cur = get().user;
+        if (!cur) return;
+        const next: User = { ...cur, firstLogin: false };
+        set({ user: next });
+        console.log('[store:finishOnboarding] firstLogin -> false');
+      },
+
       // 로그아웃
-      logout: () => set({ user: null, token: null, justSignedUp: false }),
+      logout: () => {
+        console.log('[store:logout]');
+        set({ user: null, token: null, justSignedUp: false });
+      },
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // 저장 대상(로드 플래그 제외)
       partialize: (s) => ({
         user: s.user,
         token: s.token,
         justSignedUp: s.justSignedUp,
       }),
-      // 스토리지 복원 완료 표식
-      onRehydrateStorage: () => (state) => {
-        // set을 캡처해왔으므로 안전하게 상태로 반영
-        // eslint 경고 피하려면 직접 set을 호출하는 방식이 좋습니다.
-        if (state !== undefined) {
-        }
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (state) {
+            state.hydrateDone = true;
+            console.log('[store] hydrateDone = true');
+          }
+          if (error) {
+            console.log('[store] rehydrate error', error);
+          }
+        };
       },
     },
   ),

@@ -17,24 +17,31 @@ import { useAuthStore } from '@/src/store/useAuthStore';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const { login, isLoading, token, user, hydrateDone } = useAuthStore();
 
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  // 로그인 후 분기
   useEffect(() => {
-    if (!hydrateDone) return; // ✅ 스토어 수화 완료 후에만
-    if (!token) return;
+    console.log('[login effect]', {
+      hydrateDone,
+      hasToken: !!token,
+      first: user?.firstLogin,
+    });
+
+    if (!token) return; // 토큰 없으면 아직 로그인 전
 
     if (user?.firstLogin) {
-      router.replace('/onboarding-profile');
+      router.replace('/onboarding-profile'); // ✅ 첫 로그인
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)'); // ✅ 일반 로그인
     }
-  }, [hydrateDone, token, user, router]);
+  }, [token, user?.firstLogin, router, hydrateDone]);
 
   const handleLogin = async () => {
     try {
-      await login(email, password);
+      await login(email, password); // 실제 이동은 위 useEffect가 처리
     } catch (e) {
       console.log('로그인 실패:', e);
     }

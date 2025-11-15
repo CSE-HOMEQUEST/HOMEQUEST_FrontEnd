@@ -1,6 +1,6 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -11,16 +11,27 @@ import {
   TouchableOpacity,
 } from 'react-native';
 
+/* ========== 공통 로깅 함수 ========== */
+function logRankingEvent(event: string, payload?: any) {
+  if (payload !== undefined) {
+    console.log('[Ranking]', event, payload);
+  } else {
+    console.log('[Ranking]', event);
+  }
+}
+
+/* ========== 헤더 ========== */
 function Header() {
   return (
     <View style={styles.header}>
-      {/* HeaderLogo */}
       <Text style={styles.headerLogo}>HomeQuest</Text>
 
-      {/* SettingButton */}
       <TouchableOpacity
         style={styles.settingButton}
-        onPress={() => router.push('/Setting')}
+        onPress={() => {
+          logRankingEvent('press_setting');
+          router.push('/Setting');
+        }}
       >
         <Image
           source={require('../../assets/images/SettingButton.png')}
@@ -28,32 +39,27 @@ function Header() {
         />
       </TouchableOpacity>
 
-      {/* Line7 */}
       <View style={styles.line7} />
     </View>
   );
 }
 
+/* ========== 내 랭킹 카드 ========== */
 function MyRankingCard() {
   return (
     <View style={styles.myRankingCard}>
-      {/* 왼쪽: "내 랭킹" */}
       <View style={styles.myRankingLeft}>
         <Text style={styles.myRankingLabel}>내 랭킹</Text>
       </View>
 
-      {/* 가운데 세로 라인 */}
       <View style={styles.myRankingDivider} />
 
-      {/* 오른쪽: 랭킹 텍스트 */}
       <View style={styles.myRankingRight}>
-        {/* 1줄차: 닉네임 + 설명 */}
         <Text style={styles.myRankingLine1}>
           <Text style={styles.myRankingName}>잠안자고 홈퀘</Text>
           <Text style={styles.myRankingSub}> 님의 랭킹은</Text>
         </Text>
 
-        {/* 2줄차: 6위 + 입니다 */}
         <Text style={styles.myRankingLine2}>
           <Text style={styles.myRankingNumber}>6위</Text>
           <Text style={styles.myRankingSub}> 입니다</Text>
@@ -63,7 +69,8 @@ function MyRankingCard() {
   );
 }
 
-/** ? 버튼용 props */
+/* ========== 상단 기간/지역 ========== */
+
 type RankingInfoProps = {
   onPressInfo: (pos: {
     x: number;
@@ -77,7 +84,6 @@ function RankingInfo({ onPressInfo }: RankingInfoProps) {
   const infoRef = useRef<View | null>(null);
 
   const handlePress = () => {
-    // ? 버튼의 화면 좌표 측정
     infoRef.current?.measureInWindow((x, y, width, height) => {
       onPressInfo({ x, y, width, height });
     });
@@ -85,14 +91,12 @@ function RankingInfo({ onPressInfo }: RankingInfoProps) {
 
   return (
     <View style={styles.rankingInfo}>
-      {/* 기간 / 참가자 정보 */}
       <View style={styles.rankingPeriodRow}>
         <Text style={styles.rankingPeriodText}>
           10.1~10.31 | 총 529명 참석중
         </Text>
       </View>
 
-      {/* 지역 + 물음표 버튼 */}
       <View style={styles.rankingLocationRow}>
         <Text style={styles.rankingLocationText}>서울시 성동구 행당동</Text>
         <TouchableOpacity
@@ -110,20 +114,31 @@ function RankingInfo({ onPressInfo }: RankingInfoProps) {
   );
 }
 
-function RandomBox() {
+/* ========== 랜덤 박스 ========== */
+
+type RandomBoxProps = {
+  onPress: () => void;
+};
+
+function RandomBox({ onPress }: RandomBoxProps) {
   return (
-    <View style={styles.randomBox}>
+    <TouchableOpacity
+      style={styles.randomBox}
+      activeOpacity={0.8}
+      onPress={onPress}
+    >
       <Image
         source={require('../../assets/images/RandomBox.png')}
         style={styles.randomBoxImage}
       />
-
       <View style={styles.randomGauge}>
         <View style={styles.randomGaugeFill} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
+
+/* ========== 상위 3등 카드 ========== */
 
 type TopPlaceProps = {
   place: 1 | 2 | 3;
@@ -131,6 +146,7 @@ type TopPlaceProps = {
   scoreText: string;
   statusText: string;
   statusType: 'none' | 'up' | 'down';
+  onPress?: () => void;
 };
 
 function TopPlaceCard({
@@ -139,6 +155,7 @@ function TopPlaceCard({
   scoreText,
   statusText,
   statusType,
+  onPress,
 }: TopPlaceProps) {
   const medalSource =
     place === 1
@@ -155,14 +172,14 @@ function TopPlaceCard({
         : null;
 
   return (
-    <View style={styles.topCard}>
-      {/* 위쪽 반투명 프레임 */}
+    <TouchableOpacity
+      style={styles.topCard}
+      activeOpacity={0.85}
+      onPress={onPress}
+    >
       <View style={styles.topCardFrame} />
-
-      {/* 메달 아이콘 */}
       <Image source={medalSource} style={styles.medalIcon} />
 
-      {/* 가족 이름 / 점수 / 상태 */}
       <Text style={styles.topFamilyName}>{familyName}</Text>
       <Text style={styles.topScoreText}>{scoreText}</Text>
 
@@ -172,9 +189,11 @@ function TopPlaceCard({
           <Image source={statusIconSource} style={styles.topStatusIcon} />
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
+
+/* ========== 아래 랭킹 리스트 ========== */
 
 type RankingRow = {
   rank: number;
@@ -193,7 +212,11 @@ const rankingRows: RankingRow[] = [
   { rank: 10, change: 'up', familyName: '엄마아빠최고', score: '+14,205p' },
 ];
 
-function RankingAll() {
+type RankingAllProps = {
+  onRowPress: (row: RankingRow) => void;
+};
+
+function RankingAll({ onRowPress }: RankingAllProps) {
   return (
     <View style={styles.rankingAll}>
       {rankingRows.map((row) => {
@@ -212,11 +235,12 @@ function RankingAll() {
               : null;
 
         return (
-          <View
+          <TouchableOpacity
             key={row.rank}
-            style={[styles.rankRowBase, rowStyle]} // 기본 스타일 + 배경색
+            style={[styles.rankRowBase, rowStyle]}
+            activeOpacity={0.8}
+            onPress={() => onRowPress(row)}
           >
-            {/* 순위 + 변화 아이콘 */}
             <View style={styles.rankRowLeft}>
               <Text style={styles.rankNumberText}>{row.rank}</Text>
               {changeIcon ? (
@@ -226,21 +250,21 @@ function RankingAll() {
               )}
             </View>
 
-            {/* 가족 이름 */}
             <View style={styles.rankRowCenter}>
               <Text style={styles.rankFamilyName}>{row.familyName}</Text>
             </View>
 
-            {/* 점수 */}
             <View style={styles.rankRowRight}>
               <Text style={styles.rankScoreText}>{row.score}</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         );
       })}
     </View>
   );
 }
+
+/* ========== 하단 탭 바 ========== */
 
 function BottomTabBar() {
   return (
@@ -248,7 +272,10 @@ function BottomTabBar() {
       <TouchableOpacity
         style={styles.tabButton}
         activeOpacity={0.7}
-        onPress={() => router.push('/')}
+        onPress={() => {
+          logRankingEvent('tab_click', 'Home');
+          router.push('/');
+        }}
       >
         <Image
           source={require('../../assets/images/home.png')}
@@ -259,7 +286,10 @@ function BottomTabBar() {
       <TouchableOpacity
         style={styles.tabButton}
         activeOpacity={0.7}
-        onPress={() => router.push('/two')}
+        onPress={() => {
+          logRankingEvent('tab_click', 'Challenge');
+          router.push('/two');
+        }}
       >
         <Image
           source={require('../../assets/images/challenge_.png')}
@@ -270,7 +300,10 @@ function BottomTabBar() {
       <TouchableOpacity
         style={styles.tabButton}
         activeOpacity={0.7}
-        onPress={() => router.push('/three')}
+        onPress={() => {
+          logRankingEvent('tab_click', 'Reward');
+          router.push('/three');
+        }}
       >
         <Image
           source={require('../../assets/images/reward.png')}
@@ -282,7 +315,8 @@ function BottomTabBar() {
         style={styles.tabButton}
         activeOpacity={0.7}
         onPress={() => {
-          // TODO: Ranking 탭으로 이동
+          logRankingEvent('tab_click', 'Ranking');
+          // 이미 Ranking 탭이라 이동은 필요 없음
         }}
       >
         <Image
@@ -294,6 +328,8 @@ function BottomTabBar() {
   );
 }
 
+/* ========== 메인 컴포넌트 ========== */
+
 export function Ranking() {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPos, setTooltipPos] = useState<{
@@ -303,6 +339,11 @@ export function Ranking() {
     height: number;
   } | null>(null);
 
+  // 화면 진입 로그
+  useEffect(() => {
+    logRankingEvent('screen_view');
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -310,28 +351,28 @@ export function Ranking() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 헤더 */}
         <Header />
 
-        {/* 나머지 컨텐츠는 main 안에 넣기 */}
         <View style={styles.main}>
-          {/* 내 랭킹 카드 */}
           <MyRankingCard />
 
-          {/* 기간 / 지역 / 랜덤박스 */}
           <View style={styles.infoRow}>
             <RankingInfo
               onPressInfo={(pos) => {
+                logRankingEvent('info_press', pos);
                 setTooltipPos(pos);
                 setShowTooltip(true);
               }}
             />
-            <RandomBox />
+            <RandomBox
+              onPress={() => {
+                logRankingEvent('random_box_press');
+                // 나중에 상자깡 화면으로 이동 / 모달 열기 등 연결
+              }}
+            />
           </View>
 
-          {/* 상위 3등 카드 */}
           <View style={styles.top3Row}>
-            {/* 2등 카드 */}
             <View style={styles.secondPlaceWrapper}>
               <TopPlaceCard
                 place={2}
@@ -339,10 +380,15 @@ export function Ranking() {
                 scoreText="+72,538p"
                 statusText="1위상승"
                 statusType="up"
+                onPress={() =>
+                  logRankingEvent('top_place_press', {
+                    place: 2,
+                    family: '가전왕패밀리',
+                  })
+                }
               />
             </View>
 
-            {/* 1등 카드 */}
             <View style={styles.firstPlaceWrapper}>
               <TopPlaceCard
                 place={1}
@@ -350,10 +396,15 @@ export function Ranking() {
                 scoreText="+83,912p"
                 statusText="-"
                 statusType="none"
+                onPress={() =>
+                  logRankingEvent('top_place_press', {
+                    place: 1,
+                    family: '1등은우리꺼',
+                  })
+                }
               />
             </View>
 
-            {/* 3등 카드 */}
             <View style={styles.thirdPlaceWrapper}>
               <TopPlaceCard
                 place={3}
@@ -361,35 +412,42 @@ export function Ranking() {
                 scoreText="+61,284p"
                 statusText="1위하락"
                 statusType="down"
+                onPress={() =>
+                  logRankingEvent('top_place_press', {
+                    place: 3,
+                    family: '홈퀘함?',
+                  })
+                }
               />
             </View>
           </View>
 
-          {/* 랭킹 리스트 */}
-          <RankingAll />
+          <RankingAll
+            onRowPress={(row) => {
+              logRankingEvent('rank_row_press', row);
+            }}
+          />
         </View>
       </ScrollView>
 
       {/* ? 눌렀을 때 뜨는 말풍선 */}
       {showTooltip && tooltipPos && (
         <View style={styles.tooltipBackdrop}>
-          {/* 화살표 */}
           <View
             style={[
               styles.tooltipArrow,
               {
-                top: tooltipPos.y - 75,
-                left: tooltipPos.x + tooltipPos.width / 2 - 13, // 12 = 화살표 가로 절반
+                top: tooltipPos.y + 30,
+                left: tooltipPos.x + tooltipPos.width / 2 - 13,
               },
             ]}
           />
 
-          {/* 말풍선 박스 */}
           <View
             style={[
               styles.tooltipBox,
               {
-                top: tooltipPos.y - 75 + 8, // ? 바로 아래 8px
+                top: tooltipPos.y + 40,
                 left: 20,
                 right: 20,
               },
@@ -404,7 +462,10 @@ export function Ranking() {
 
             <TouchableOpacity
               style={styles.tooltipCloseButton}
-              onPress={() => setShowTooltip(false)}
+              onPress={() => {
+                logRankingEvent('tooltip_close');
+                setShowTooltip(false);
+              }}
             >
               <Text style={styles.tooltipCloseText}>✕</Text>
             </TouchableOpacity>
@@ -439,7 +500,6 @@ const styles = StyleSheet.create({
   header: {
     width: '100%',
     height: 53,
-    marginTop: 50,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
