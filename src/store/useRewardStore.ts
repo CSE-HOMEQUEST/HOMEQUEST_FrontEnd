@@ -8,7 +8,7 @@ export type HistoryItem = {
   id: number;
   date: string;
   label: string;
-  point: number; // + ���� / - ���
+  point: number; // + 적립 / - 사용
   type: 'earn' | 'use';
 };
 
@@ -29,10 +29,10 @@ type RewardState = {
   monthlyRank: WeeklyRankItem[];
   memberTotal: { name: string; point: number }[];
 
-  // ? ���� Ÿ�Ӷ���
+  // ? 개인 타임라인
   myHistory: HistoryItem[];
 
-  // ? ���� Ÿ�Ӷ���
+  // ? 가족 타임라인
   familyHistory: HistoryItem[];
 
   // Loading
@@ -47,14 +47,14 @@ type RewardState = {
     monthlyRank: WeeklyRankItem[];
   }) => void;
 
-  // ���� History -> ���� �����丮�� ���
+  // 기존 History -> 개인 히스토리로 사용
   setHistory: (type: 'my' | 'family', list: HistoryItem[]) => void;
 
-  // ? Ÿ�Ӷ��ο� �� ��� �߰�
+  // ? 타임라인에 새 기록 추가
   addMyHistory: (item: HistoryItem) => void;
   addFamilyHistory: (item: HistoryItem) => void;
 
-  // ����Ʈ ��� / ����
+  // 포인트 사용 / 적립
   spendFamilyPoint: (amount: number) => void;
   addMyPoint: (amount: number) => void;
   spendPoint: (amount: number) => void;
@@ -65,7 +65,7 @@ type RewardState = {
    Store
 --------------------------------*/
 export const useRewardStore = create<RewardState>((set) => ({
-  // �⺻�� -------------------------------------
+  // 기본값 -------------------------------------
   myPoint: 0,
   expectedPoint: 0,
 
@@ -74,13 +74,13 @@ export const useRewardStore = create<RewardState>((set) => ({
   monthlyRank: [],
   memberTotal: [],
 
-  // ? �и��� Ÿ�Ӷ���
+  // ? 분리된 타임라인
   myHistory: [],
   familyHistory: [],
 
   loading: false,
 
-  // ? ���� ������ ������ ����
+  // ? 나의 리워드 데이터 설정
   setMemberTotal: (data: any) => set({ memberTotal: data }),
   setMyReward: (data) =>
     set({
@@ -88,48 +88,48 @@ export const useRewardStore = create<RewardState>((set) => ({
       expectedPoint: data.expectedPoint,
     }),
 
-  // ? ���� ������ ������ ����
+  // ? 가족 리워드 데이터 설정
   setFamilyReward: (data) =>
     set({
       familyTotal: data.total,
       weeklyRank: data.weeklyRank,
-      monthlyRank: data.monthlyRank, // �� ���� �߰�
+      monthlyRank: data.monthlyRank, // ← 여기 추가
     }),
 
-  // ? ���� setHistory() �� ���ο� Ÿ�Ӷ������� ����
+  // ? 기존 setHistory() → 개인용 타임라인으로 저장
   setHistory: (type, list) =>
     set((_state) =>
       type === 'my' ? { myHistory: list } : { familyHistory: list },
     ),
 
-  // ? ���� �����丮 �߰�
+  // ? 개인 히스토리 추가
   addMyHistory: (item) =>
-    set((state) => ({
-      myHistory: [...state.myHistory, item],
+    set((_state) => ({
+      myHistory: [..._state.myHistory, item],
     })),
 
-  // ? ���� �����丮 �߰�
+  // ? 가족 히스토리 추가
   addFamilyHistory: (item) =>
-    set((state) => ({
-      familyHistory: [...state.familyHistory, item],
+    set((_state) => ({
+      familyHistory: [..._state.familyHistory, item],
     })),
 
-  // ? ���� ����Ʈ ���
+  // ? 가족 포인트 사용
   spendFamilyPoint: (amount) =>
-    set((state) => ({
-      familyTotal: state.familyTotal - amount,
+    set((_state) => ({
+      familyTotal: _state.familyTotal - amount,
     })),
 
-  // ? ���� ����Ʈ ����
+  // ? 개인 포인트 적립
   addMyPoint: (amount) =>
     set((state) => ({
       myPoint: state.myPoint + amount,
     })),
 
-  // ? ���� ����Ʈ ���
+  // ? 개인 포인트 사용
   spendPoint: (amount) =>
-    set((state) => ({
-      myPoint: state.myPoint - amount,
+    set((_state) => ({
+      myPoint: _state.myPoint - amount,
     })),
 
   setLoading: (value) => set({ loading: value }),
