@@ -1,6 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -155,25 +156,34 @@ function CharacterContent() {
 function BottomTabBar() {
   return (
     <View style={styles.bottomTabBar}>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/(tabs)')}
+      >
         <Image
           source={require('../../assets/bars/home.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/two')}>
         <Image
           source={require('../../assets/bars/challenge.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/three')}
+      >
         <Image
           source={require('../../assets/bars/reward.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push('/four')}
+      >
         <Image
           source={require('../../assets/bars/ranking.png')}
           style={styles.tabIcon}
@@ -205,7 +215,7 @@ const styles = StyleSheet.create({
   // Header
   header: {
     width: '100%',
-    height: 60,
+    height: 53,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',

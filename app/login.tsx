@@ -1,6 +1,6 @@
 // app/login.tsx
 import { useRouter } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -17,33 +17,36 @@ import { useAuthStore } from '@/src/store/useAuthStore';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, isLoading, token, user, hydrateDone } = useAuthStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // 로그인 후 분기
-  useEffect(() => {
-    console.log('[login effect]', {
-      hydrateDone,
-      hasToken: !!token,
-      first: user?.firstLogin,
-    });
+  const login = useAuthStore((s) => s.login);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
-    if (!token) return; // 토큰 없으면 아직 로그인 전
-
-    if (user?.firstLogin) {
-      router.replace('/onboarding-profile'); // ✅ 첫 로그인
-    } else {
-      router.replace('/(tabs)'); // ✅ 일반 로그인
-    }
-  }, [token, user?.firstLogin, router, hydrateDone]);
-
+  // ✅ 여기에만 분기 로직 넣기
   const handleLogin = async () => {
     try {
-      await login(email, password); // 실제 이동은 위 useEffect가 처리
+      await login(email, password);
+
+      // 로그인 이후 최신 상태 직접 읽기
+      const { user, token } = useAuthStore.getState();
+      const first = user?.firstLogin;
+      console.log('[LoginScreen after login]', { user, token, first });
+
+      if (!token) {
+        // 이 경우는 거의 없겠지만 혹시 모를 예외 처리
+        return;
+      }
+
+      if (first) {
+        router.replace('/onboarding-profile'); // ✅ 첫 로그인
+      } else {
+        router.replace('/(tabs)'); // ✅ 일반 로그인
+      }
     } catch (e) {
       console.log('로그인 실패:', e);
+      // TODO: 여기서 에러 메시지 표시
     }
   };
 

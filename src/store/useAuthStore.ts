@@ -4,10 +4,10 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
 type User = {
-  email: string;
+  email: string; // 여기에는 지금 "아이디"를 넣어서 쓰고 있어도 됨
   userId?: string;
   phone?: string;
-  firstLogin?: boolean;
+  firstLogin?: boolean; // true = 첫 로그인 → 온보딩 필요
 };
 
 type AuthState = {
@@ -15,9 +15,11 @@ type AuthState = {
   token: string | null;
   isLoading: boolean;
   hydrateDone: boolean;
-  justSignedUp: boolean; // 회원가입 직후 1회용 플래그
 
-  login: (email: string, password: string) => Promise<void>;
+  // 최근 회원가입한 아이디 (그 아이디로 첫 로그인하면 온보딩으로)
+  lastSignedUpId: string | null;
+
+  login: (id: string, password: string) => Promise<void>;
   logout: () => void;
   signUp: (p: {
     userId: string;
@@ -26,7 +28,6 @@ type AuthState = {
     phone: string;
   }) => Promise<void>;
 
-  // ✅ 온보딩 완료용 액션 추가
   finishOnboarding: () => void;
 };
 
@@ -37,45 +38,53 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isLoading: false,
       hydrateDone: false,
-      justSignedUp: false,
+
+      // 새로 추가한 필드 초기값
+      lastSignedUpId: null,
 
       // 로그인
-      login: async (email, _password) => {
+      login: async (id, _password) => {
         set({ isLoading: true });
         await new Promise((r) => setTimeout(r, 400));
 
-        // 방금 회원가입한 상태라면 첫 로그인으로 취급
-        const expectFirst = get().justSignedUp;
+        const { lastSignedUpId } = get();
+        const isFirstLogin = lastSignedUpId === id;
 
         set({
-          user: { email, firstLogin: expectFirst },
+          // email 자리에 아이디(id)를 그냥 넣어서 사용 중
+          user: { email: id, firstLogin: isFirstLogin },
           token: 'demo-token-123',
           isLoading: false,
-          justSignedUp: false, // 플래그 소모
+          lastSignedUpId: isFirstLogin ? null : lastSignedUpId,
         });
-        console.log('[store:login set]', { email, expectFirst });
+
+        console.log('[store:login set]', { id, isFirstLogin });
       },
 
       // 회원가입
       signUp: async ({
-        userId: _userId,
+        userId,
         password: _password,
         email: _email,
         phone: _phone,
       }) => {
         set({ isLoading: true });
         try {
-          // TODO: 실제 API 호출
+          // TODO: 실제 회원가입 API 호출
           await new Promise((r) => setTimeout(r, 400));
-          // 회원가입 성공 → 다음 로그인은 첫 로그인으로
-          set({ justSignedUp: true });
-          console.log('[store:signUp] justSignedUp -> true');
+
+          // 최근 회원가입 아이디 저장
+          set({
+            lastSignedUpId: userId,
+          });
+
+          console.log('[store:signUp] lastSignedUpId =', userId);
         } finally {
           set({ isLoading: false });
         }
       },
 
-      // ✅ 온보딩 완료 처리
+      // 온보딩 완료
       finishOnboarding: () => {
         const cur = get().user;
         if (!cur) return;
@@ -87,16 +96,21 @@ export const useAuthStore = create<AuthState>()(
       // 로그아웃
       logout: () => {
         console.log('[store:logout]');
-        set({ user: null, token: null, justSignedUp: false });
+        set({
+          user: null,
+          token: null,
+          lastSignedUpId: null,
+        });
       },
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      // 어떤 값들을 AsyncStorage에 저장할지 선택
       partialize: (s) => ({
         user: s.user,
         token: s.token,
-        justSignedUp: s.justSignedUp,
+        lastSignedUpId: s.lastSignedUpId,
       }),
       onRehydrateStorage: () => {
         return (state, error) => {

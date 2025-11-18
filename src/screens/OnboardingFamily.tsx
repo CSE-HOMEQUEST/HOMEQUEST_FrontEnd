@@ -11,8 +11,11 @@ import {
   Image,
 } from 'react-native';
 
+import { useAuthStore } from '../store/useAuthStore';
+
 export default function OnboardingFamily() {
   const router = useRouter(); // ✅ 추가
+  const finishOnboarding = useAuthStore((s) => s.finishOnboarding);
 
   // mode: 'code' = 가족 코드 입력, 'new' = 새 가족 만들기
   const [mode, setMode] = useState<'code' | 'new'>('code');
@@ -20,6 +23,16 @@ export default function OnboardingFamily() {
   const [familyNickname, setFamilyNickname] = useState('');
 
   const handleClearNickname = () => setFamilyNickname('');
+
+  const handleStart = () => {
+    if (isStartDisabled) return;
+
+    // ✅ 온보딩 종료 처리 (firstLogin -> false)
+    finishOnboarding();
+
+    // ✅ 메인 탭으로 이동
+    router.replace('/(tabs)');
+  };
 
   const isStartDisabled =
     (mode === 'code' && familyCode.trim() === '') ||
@@ -156,14 +169,7 @@ export default function OnboardingFamily() {
                 : styles.startButtonEnabled,
             ]}
             activeOpacity={isStartDisabled ? 1 : 0.8}
-            onPress={() => {
-              if (isStartDisabled) return;
-              // ✅ 여기서 홈 탭으로 이동
-              // 홈 탭이 app/(tabs)/index.tsx 라면:
-              // router.replace('/(tabs)');
-              // 만약 home.tsx 같은 이름이면 그 경로로 바꿔줘
-              router.replace('/(tabs)');
-            }}
+            onPress={handleStart}
           >
             <Text
               style={[

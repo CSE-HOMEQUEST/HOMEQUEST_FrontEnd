@@ -49,6 +49,8 @@ export default function SignupScreen() {
   const handleSubmit = async () => {
     if (!canSubmit) return;
     try {
+      console.log('[SignupScreen handleSubmit] email =', email);
+
       await signUp({ userId, password, email, phone });
       // 실제로는 {userId, password, email, phone} 등 서버 스펙에 맞추세요
       router.replace('/login'); // 회원가입 후 로그인 화면으로

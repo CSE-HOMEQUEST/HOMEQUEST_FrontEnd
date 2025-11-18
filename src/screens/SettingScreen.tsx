@@ -164,8 +164,7 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    height: 59,
-    marginTop: 44,
+    height: 70,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
