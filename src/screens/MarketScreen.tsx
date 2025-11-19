@@ -181,7 +181,7 @@ function MarketHome({
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={styles.inactiveTab}
-          onPress={() => router.replace('/')}
+          onPress={() => router.navigate('/(tabs)/reward')}
         >
           <Text style={styles.inactiveTabText}>리워드</Text>
         </TouchableOpacity>

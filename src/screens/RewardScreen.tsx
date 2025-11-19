@@ -230,7 +230,6 @@ function HistoryBubble({
    Reward Content (메인 로직)
 -------------------------------------------------- */
 function RewardContent() {
-  const navigation = useNavigation<NavigationProp<any>>();
   const { ongoing } = useChallengeStore();
 
   const [isModalVisible, setModalVisible] = useState(false);
@@ -382,7 +381,7 @@ function RewardContent() {
 
         <TouchableOpacity
           style={styles.inactiveTab}
-          onPress={() => navigation.navigate('Market')}
+          onPress={() => router.navigate('/(tabs)/market')}
         >
           <Text style={styles.inactiveTabText}>마켓</Text>
         </TouchableOpacity>
