@@ -115,10 +115,28 @@ function RoomBlock() {
           />
         </TouchableOpacity>
 
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Character_2')}
+          style={styles.character2Touchable}
+        >
+          <Image
+            source={require('../../assets/rooms/jin.png')}
+            style={styles.character2}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+
         {/* 가구 / 오브젝트 */}
         <Image
           source={require('../../assets/rooms/desk.png')}
           style={styles.table}
+          resizeMode="cover"
+        />
+
+        <Image
+          source={require('../../assets/rooms/desk_2.png')}
+          style={styles.table2}
           resizeMode="cover"
         />
 
@@ -341,8 +359,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   roomBase: { position: 'absolute' },
-  room1: { width: 231, height: 232, left: 100, top: 0 },
-  room2: { width: 236, height: 236, top: 328, left: 100 },
+  room1: { width: 225, height: 232, left: 96, top: -6 },
+  room2: { width: 251, height: 251, top: 318, left: 89 },
   room3: { width: 234, height: 236, top: 160, left: 0 },
   room4: { width: 232, height: 232, top: 164, left: 186 },
 
@@ -360,12 +378,38 @@ const styles = StyleSheet.create({
     height: 85,
     resizeMode: 'contain',
   },
+
+  character2Touchable: {
+    position: 'absolute',
+    top: 420, // 원하는 위치로 조정
+    left: 218, // 원하는 위치로 조정
+    width: 65,
+    height: 85,
+    zIndex: 5,
+  },
+  character2: {
+    position: 'absolute',
+    width: 65,
+    height: 85,
+    resizeMode: 'contain',
+  },
+
   table: {
     position: 'absolute',
     width: 50,
     height: 30,
-    top: 165,
-    left: 170,
+    top: 155,
+    left: 160,
+    resizeMode: 'contain',
+    zIndex: 5,
+  },
+
+  table2: {
+    position: 'absolute',
+    width: 85,
+    height: 65,
+    top: 465,
+    left: 193,
     resizeMode: 'contain',
     zIndex: 5,
   },

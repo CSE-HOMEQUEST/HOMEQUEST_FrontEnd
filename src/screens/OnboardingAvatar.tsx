@@ -1,6 +1,6 @@
 // src/screens/OnboardingAvatar.tsx
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   SafeAreaView,
   View,
@@ -15,9 +15,7 @@ import {
 } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// 한 “페이지”의 폭 (가운데 1개 꽉, 양 옆이 반쯤 보이게)
-const ITEM_WIDTH = SCREEN_WIDTH * 0.5;
+const ITEM_WIDTH = SCREEN_WIDTH * 0.55;
 const SIDE_SPACING = (SCREEN_WIDTH - ITEM_WIDTH) / 2;
 
 const avatars = [
@@ -29,25 +27,33 @@ const avatars = [
 
 export default function OnboardingAvatar() {
   const router = useRouter();
+  const flatListRef = useRef<FlatList>(null);
 
-  // 가운데 선택된 인덱스
-  const [selectedIndex, setSelectedIndex] = useState(1); // 처음엔 두 번째 것을 선택
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const handleNext = () => {
-    // TODO: 선택한 아바타 서버에 저장 등
-    router.push('/onboarding-family'); // 다음 단계(가족 연결 화면)로 이동 예정
+  /* 캐러셀 스크롤 이동 */
+  const scrollToIndex = (index: number) => {
+    flatListRef.current?.scrollToOffset({
+      offset: index * ITEM_WIDTH,
+      animated: true,
+    });
   };
 
+  /* 스크롤 종료 시 선택된 아바타 갱신 */
   const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
     const index = Math.round(x / ITEM_WIDTH);
     setSelectedIndex(index);
   };
 
+  const handleNext = () => {
+    router.push('/onboarding-family');
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* 상단 진행바 2/3 */}
+        {/* 진행바 */}
         <View style={styles.progressRow}>
           <View style={styles.progressBarTrack}>
             <View style={styles.progressBarFill} />
@@ -55,12 +61,13 @@ export default function OnboardingAvatar() {
           <Text style={styles.progressStepText}>2/3</Text>
         </View>
 
-        {/* 제목 */}
-        <Text style={styles.title}>나의 아바타를 생성해주세요</Text>
+        {/* 타이틀 */}
+        <Text style={styles.title}>나의 아바타를 선택해주세요</Text>
 
         {/* 아바타 캐러셀 */}
         <View style={styles.avatarRow}>
           <FlatList
+            ref={flatListRef}
             data={avatars}
             keyExtractor={(_, idx) => String(idx)}
             horizontal
@@ -69,29 +76,29 @@ export default function OnboardingAvatar() {
             decelerationRate="fast"
             bounces={false}
             onMomentumScrollEnd={handleScrollEnd}
-            contentContainerStyle={{
-              paddingHorizontal: SIDE_SPACING,
-            }}
+            contentContainerStyle={{ paddingHorizontal: SIDE_SPACING }}
             renderItem={({ item, index }) => {
               const isSelected = index === selectedIndex;
               return (
-                <View
+                <TouchableOpacity
                   style={[
                     styles.avatarWrapper,
                     {
-                      opacity: isSelected ? 1 : 0.3, // 가운데 1, 양 옆 0.3
-                      transform: [{ scale: isSelected ? 1 : 0.9 }],
+                      opacity: isSelected ? 1 : 0.3,
+                      transform: [{ scale: isSelected ? 1 : 0.85 }],
                     },
                   ]}
+                  onPress={() => scrollToIndex(index)}
+                  activeOpacity={0.9}
                 >
                   <Image source={item} style={styles.avatarImage} />
-                </View>
+                </TouchableOpacity>
               );
             }}
           />
         </View>
 
-        {/* 페이지 인디케이터 (점 3개) */}
+        {/* 인디케이터 */}
         <View style={styles.dotsRow}>
           {avatars.map((_, idx) => (
             <View
@@ -104,14 +111,28 @@ export default function OnboardingAvatar() {
           ))}
         </View>
 
-        {/* 하단 버튼 */}
+        {/* 다음 버튼 */}
         <View style={styles.bottomArea}>
           <TouchableOpacity
-            style={styles.nextButtonDisabled}
-            activeOpacity={0.8}
+            style={[
+              styles.nextButton,
+              selectedIndex === null
+                ? styles.nextButtonDisabled
+                : styles.nextButtonEnabled,
+            ]}
             onPress={handleNext}
+            activeOpacity={selectedIndex === null ? 1 : 0.8}
           >
-            <Text style={styles.nextButtonTextDisabled}>다음으로</Text>
+            <Text
+              style={[
+                styles.nextButtonText,
+                selectedIndex === null
+                  ? styles.nextButtonTextDisabled
+                  : styles.nextButtonTextEnabled,
+              ]}
+            >
+              다음으로
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -120,20 +141,15 @@ export default function OnboardingAvatar() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  container: {
-    flex: 1,
-    paddingTop: 86,
-  },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
 
-  /* 진행바 + 2/3 */
+  container: { flex: 1, paddingTop: 86 },
+
+  /* 진행바 */
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 40,
     paddingHorizontal: 24,
   },
   progressBarTrack: {
@@ -145,14 +161,13 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   progressBarFill: {
-    width: '66%', // 2/3
+    width: '66%',
     height: '100%',
     backgroundColor: '#5A6FE9',
   },
   progressStepText: {
     fontSize: 16,
     color: '#121417',
-    fontFamily: 'Roboto',
     fontWeight: '500',
   },
 
@@ -160,31 +175,28 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700',
-    fontFamily: 'Roboto',
     color: '#353535',
-    marginBottom: 5,
+    marginBottom: 10,
     paddingHorizontal: 24,
   },
 
-  /* 아바타 캐러셀 컨테이너 */
+  /* 캐러셀 */
   avatarRow: {
-    height: 390,
+    height: 380,
     justifyContent: 'center',
-    marginBottom: 0,
   },
   avatarWrapper: {
-    width: ITEM_WIDTH - 9, // 아바타 간격을 좁히려면 폭을 줄임 (예: -10, -20)
+    width: ITEM_WIDTH,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 3, // 간격 미세조정
   },
   avatarImage: {
-    width: 300,
-    height: 400,
+    width: 280,
+    height: 360,
     resizeMode: 'contain',
   },
 
-  /* 점 인디케이터 */
+  /* 인디케이터 */
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -196,30 +208,20 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginHorizontal: 4,
   },
-  dotActive: {
-    backgroundColor: '#555555',
-  },
-  dotInactive: {
-    backgroundColor: '#D9D9D9',
-  },
+  dotActive: { backgroundColor: '#555555' },
+  dotInactive: { backgroundColor: '#D9D9D9' },
 
-  /* 하단 버튼 */
-  bottomArea: {
-    marginTop: 'auto',
-    marginBottom: 32,
-    paddingHorizontal: 24,
-  },
-  nextButtonDisabled: {
+  /* 다음 버튼 */
+  bottomArea: { marginBottom: 32, paddingHorizontal: 24 },
+  nextButton: {
     height: 47,
     borderRadius: 8,
-    backgroundColor: '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  nextButtonTextDisabled: {
-    fontSize: 16,
-    fontFamily: 'Roboto',
-    color: '#A0A0A0',
-    fontWeight: '700',
-  },
+  nextButtonDisabled: { backgroundColor: '#E0E0E0' },
+  nextButtonEnabled: { backgroundColor: '#353535' },
+  nextButtonText: { fontSize: 16, fontWeight: '700' },
+  nextButtonTextDisabled: { color: '#A0A0A0' },
+  nextButtonTextEnabled: { color: '#FFFFFF' },
 });
