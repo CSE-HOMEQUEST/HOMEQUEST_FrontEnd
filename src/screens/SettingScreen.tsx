@@ -1,6 +1,7 @@
 // src/screens/Setting.tsx
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
@@ -12,9 +13,58 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  Modal,
+  Share,
 } from 'react-native';
 
 import { useAuthStore } from '@/src/store/useAuthStore';
+
+/* ────────────── 가족 초대 팝업 ────────────── */
+function FamilyInvitePopup({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const inviteCode = 'WG371518';
+
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(inviteCode);
+    Alert.alert('복사 완료', '초대 코드가 복사되었습니다.');
+  };
+
+  const handleShare = async () => {
+    await Share.share({
+      message: `우리 가족 초대코드: ${inviteCode}\nHomeQuest에서 가족과 연결해요!`,
+    });
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={popupStyles.overlay}>
+        <View style={popupStyles.box}>
+          <Text style={popupStyles.title}>가족 초대 코드</Text>
+          <Text style={popupStyles.code}>{inviteCode}</Text>
+
+          <View style={popupStyles.buttons}>
+            <TouchableOpacity style={popupStyles.button} onPress={handleCopy}>
+              <Text style={popupStyles.buttonText}>복사</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={popupStyles.button} onPress={handleShare}>
+              <Text style={popupStyles.buttonText}>공유</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={popupStyles.close} onPress={onClose}>
+            <Text style={{ fontSize: 14, color: '#666' }}>닫기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 /* ────────────── Header ────────────── */
 function Header() {
@@ -37,7 +87,7 @@ function Header() {
   );
 }
 
-/* ────────────── Profile Section ────────────── */
+/* ────────────── 프로필 섹션 ────────────── */
 function ProfileSection() {
   return (
     <View style={styles.profile}>
@@ -57,10 +107,14 @@ function ProfileSection() {
   );
 }
 
-/* ────────────── Setting List ────────────── */
-function SettingList() {
+/* ────────────── 설정 항목 리스트 ────────────── */
+function SettingList({ onInvitePress }: { onInvitePress: () => void }) {
   const items = [
-    { icon: require('../../assets/main_icon/1.png'), label: '가족 초대 관리' },
+    {
+      icon: require('../../assets/main_icon/1.png'),
+      label: '가족 초대 관리',
+      action: onInvitePress,
+    },
     { icon: require('../../assets/main_icon/2.png'), label: '가전 연동 관리' },
     { icon: require('../../assets/main_icon/3.png'), label: '알림 설정' },
     {
@@ -82,14 +136,17 @@ function SettingList() {
   return (
     <View style={styles.settingList}>
       {items.map((item, idx) => (
-        <View key={idx} style={styles.listItem}>
-          {/* 왼쪽 아이콘 + 라벨 */}
+        <TouchableOpacity
+          key={idx}
+          style={styles.listItem}
+          activeOpacity={0.7}
+          onPress={item.action}
+        >
           <View style={styles.listLeft}>
             <Image source={item.icon} style={styles.listIcon} />
             <Text style={styles.listText}>{item.label}</Text>
           </View>
 
-          {/* 오른쪽 서브 텍스트 or 화살표 */}
           {item.sub ? (
             <Text style={styles.subText}>{item.sub}</Text>
           ) : (
@@ -98,13 +155,13 @@ function SettingList() {
               style={styles.detailIcon}
             />
           )}
-        </View>
+        </TouchableOpacity>
       ))}
     </View>
   );
 }
 
-/* ────────────── Logout Button ────────────── */
+/* ────────────── 로그아웃 버튼 ────────────── */
 function LogoutButton() {
   const { logout, isLoading } = useAuthStore();
   const router = useRouter();
@@ -117,10 +174,9 @@ function LogoutButton() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await logout(); // 토큰/유저 초기화 (+ 서버 revoke가 있다면 여기서)
+            await logout();
           } finally {
-            router.replace('/login'); // 스택 리셋하여 뒤로가기 방지
-            // 참고: _layout의 가드가 있다면 이 줄 없이도 /login으로 이동하지만 UX상 명시가 더 깔끔
+            router.replace('/login');
           }
         },
       },
@@ -140,29 +196,60 @@ function LogoutButton() {
   );
 }
 
-/* ────────────── Setting Screen ────────────── */
+/* ────────────── 설정 화면 ────────────── */
 export default function Setting() {
+  const [inviteVisible, setInviteVisible] = React.useState(false);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <Header />
         <ProfileSection />
-        <SettingList />
+        <SettingList onInvitePress={() => setInviteVisible(true)} />
         <LogoutButton />
       </ScrollView>
+
+      {/* 가족 초대 팝업 */}
+      <FamilyInvitePopup
+        visible={inviteVisible}
+        onClose={() => setInviteVisible(false)}
+      />
     </SafeAreaView>
   );
 }
 
-/* ────────────── Styles ────────────── */
-const styles = StyleSheet.create({
-  // 기본 레이아웃
-  safe: {
+/* ────────────── 스타일 ────────────── */
+const popupStyles = StyleSheet.create({
+  overlay: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  box: {
+    width: 300,
+    backgroundColor: '#fff',
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  title: { fontSize: 18, fontWeight: '600', marginBottom: 16 },
+  code: { fontSize: 28, fontWeight: '700', letterSpacing: 2, marginBottom: 24 },
+  buttons: { flexDirection: 'row', gap: 12 },
+  button: {
+    backgroundColor: '#5A6FE9',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  buttonText: { color: '#fff', fontSize: 14 },
+  close: { marginTop: 16 },
+});
 
-  // Header
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+
+  /* 헤더 */
   header: {
     height: 70,
     alignItems: 'center',
@@ -185,7 +272,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
   },
 
-  // 프로필
+  /* 프로필 */
   profile: {
     width: '90%',
     flexDirection: 'row',
@@ -198,18 +285,8 @@ const styles = StyleSheet.create({
   },
   profileImage: { width: 56, height: 56, borderRadius: 28 },
   textBox: { flex: 1, marginLeft: 12 },
-  nameText: {
-    fontFamily: 'Roboto',
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#121417',
-  },
-  emailText: {
-    fontFamily: 'Roboto',
-    fontSize: 14,
-    color: '#61758A',
-    marginTop: 2,
-  },
+  nameText: { fontSize: 16, fontWeight: '500', color: '#121417' },
+  emailText: { fontSize: 14, color: '#61758A', marginTop: 2 },
   detailIcon: {
     width: 7,
     height: 14,
@@ -217,7 +294,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
 
-  // 설정 리스트
+  /* 설정 리스트 */
   settingList: {
     marginTop: 9,
     width: '90%',
@@ -238,18 +315,10 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     marginRight: 12,
   },
-  listText: {
-    fontFamily: 'Roboto',
-    fontSize: 16,
-    color: '#121417',
-  },
-  subText: {
-    fontFamily: 'Roboto',
-    fontSize: 16,
-    color: '#61758A',
-  },
+  listText: { fontSize: 16, color: '#121417' },
+  subText: { fontSize: 16, color: '#61758A' },
 
-  // 로그아웃 버튼
+  /* 로그아웃 버튼 */
   logoutButton: {
     backgroundColor: '#353535',
     borderRadius: 8,
@@ -260,7 +329,6 @@ const styles = StyleSheet.create({
     marginBottom: 80,
   },
   logoutText: {
-    fontFamily: 'Roboto',
     color: '#FFFFFF',
     textAlign: 'center',
     fontSize: 16,
