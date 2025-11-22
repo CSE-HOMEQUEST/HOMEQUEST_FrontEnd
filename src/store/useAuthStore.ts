@@ -1,7 +1,7 @@
 // src/store/useAuthStore.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 type User = {
   email: string; // 여기에는 지금 "아이디"를 넣어서 쓰고 있어도 됨
