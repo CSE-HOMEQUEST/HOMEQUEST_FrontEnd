@@ -16,6 +16,23 @@ import {
   UIManager,
 } from 'react-native';
 
+const rankingSwapLayout = {
+  duration: 750, // 전체 애니메이션 길이
+  create: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.opacity,
+  },
+  update: {
+    // 핵심: 위치 변경은 spring 으로
+    type: LayoutAnimation.Types.spring,
+    springDamping: 0.8,
+  },
+  delete: {
+    type: LayoutAnimation.Types.easeInEaseOut,
+    property: LayoutAnimation.Properties.opacity,
+  },
+} as const;
+
 /* ========== 공통 로깅 함수 ========== */
 function logRankingEvent(event: string, payload?: any) {
   if (payload !== undefined) {
@@ -647,9 +664,9 @@ export function Ranking() {
   // 3) 진입 직후 자리 재정렬 + 애니메이션
   useEffect(() => {
     const t = setTimeout(() => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      LayoutAnimation.configureNext(rankingSwapLayout);
       setRows((prev) => [...prev].sort((a, b) => a.rank - b.rank));
-    }, 80); // 0.08초만 늦춤
+    }, 80);
 
     return () => clearTimeout(t);
   }, []);
