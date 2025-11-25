@@ -1,6 +1,6 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -9,6 +9,11 @@ import {
   Image,
   StyleSheet,
   TouchableOpacity,
+  Animated,
+  Easing,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 
 /* ========== 공통 로깅 함수 ========== */
@@ -45,7 +50,16 @@ function Header() {
 }
 
 /* ========== 내 랭킹 카드 ========== */
-function MyRankingCard() {
+
+type MyRankingCardProps = {
+  familyName: string;
+  rank: number | null;
+};
+
+function MyRankingCard({ familyName, rank }: MyRankingCardProps) {
+  // 순위가 아직 없으면 -위로 표시
+  const rankText = rank != null ? `${rank}위` : '-위';
+
   return (
     <View style={styles.myRankingCard}>
       <View style={styles.myRankingLeft}>
@@ -56,12 +70,12 @@ function MyRankingCard() {
 
       <View style={styles.myRankingRight}>
         <Text style={styles.myRankingLine1}>
-          <Text style={styles.myRankingName}>잠안자고 홈퀘</Text>
+          <Text style={styles.myRankingName}>{familyName}</Text>
           <Text style={styles.myRankingSub}> 님의 랭킹은</Text>
         </Text>
 
         <Text style={styles.myRankingLine2}>
-          <Text style={styles.myRankingNumber}>6위</Text>
+          <Text style={styles.myRankingNumber}>{rankText}</Text>
           <Text style={styles.myRankingSub}> 입니다</Text>
         </Text>
       </View>
@@ -121,6 +135,26 @@ type RandomBoxProps = {
 };
 
 function RandomBox({ onPress }: RandomBoxProps) {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 20000, // 20초 동안 천천히 차오름
+        easing: Easing.linear,
+        useNativeDriver: false, // width라서 false
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [progress]);
+
+  const fillWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
   return (
     <TouchableOpacity style={styles.randomBox} onPress={onPress}>
       <Image
@@ -128,7 +162,7 @@ function RandomBox({ onPress }: RandomBoxProps) {
         style={styles.randomBoxImage}
       />
       <View style={styles.randomGauge}>
-        <View style={styles.randomGaugeFill} />
+        <Animated.View style={[styles.randomGaugeFill, { width: fillWidth }]} />
       </View>
     </TouchableOpacity>
   );
@@ -166,18 +200,22 @@ type TopPlaceProps = {
   place: 1 | 2 | 3;
   familyName: string;
   scoreText: string;
-  statusText: string;
-  statusType: 'none' | 'up' | 'down';
+
+  rank: number;
+  prevRank: number;
+
   onPress?: () => void;
+  sharedAnim?: Animated.Value;
 };
 
 function TopPlaceCard({
   place,
   familyName,
   scoreText,
-  statusText,
-  statusType,
+  rank,
+  prevRank,
   onPress,
+  sharedAnim,
 }: TopPlaceProps) {
   const medalSource =
     place === 1
@@ -185,6 +223,18 @@ function TopPlaceCard({
       : place === 2
         ? require('../../assets/images/MedalIcon2.png')
         : require('../../assets/images/MedalIcon3.png');
+
+  const change: 'none' | 'up' | 'down' =
+    prevRank > rank ? 'up' : prevRank < rank ? 'down' : 'none';
+
+  const statusType = change;
+
+  const statusText =
+    change === 'up'
+      ? `${prevRank - rank}위상승`
+      : change === 'down'
+        ? `${rank - prevRank}위하락`
+        : '-';
 
   const statusIconSource =
     statusType === 'up'
@@ -200,7 +250,13 @@ function TopPlaceCard({
       onPress={onPress}
     >
       <View style={styles.topCardFrame} />
-      <Image source={medalSource} style={styles.medalIcon} />
+
+      {/* 메달 본체 펄스 */}
+      <BlinkImage
+        source={medalSource}
+        style={styles.medalIcon}
+        sharedAnim={sharedAnim}
+      />
 
       <Text style={styles.topFamilyName}>{familyName}</Text>
       <Text style={styles.topScoreText}>{scoreText}</Text>
@@ -215,71 +271,208 @@ function TopPlaceCard({
   );
 }
 
+/* ========== 반짝이는 효과 ========== */
+
+function useBlink(options?: {
+  sharedAnim?: Animated.Value; // 추가: 외부 애니메이션 쓰면 타이밍 동기화
+  duration?: number;
+  minOpacity?: number;
+  maxOpacity?: number;
+  minScale?: number;
+  maxScale?: number;
+}) {
+  const {
+    sharedAnim,
+    duration = 900,
+    minOpacity = 0.35,
+    maxOpacity = 1,
+    minScale = 1,
+    maxScale = 1.12,
+  } = options || {};
+
+  const localAnim = useRef(new Animated.Value(0)).current;
+  const anim = sharedAnim ?? localAnim;
+
+  useEffect(() => {
+    if (sharedAnim) return; // sharedAnim 쓰면 여기서 loop 안 돌림
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(localAnim, {
+          toValue: 1,
+          duration,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(localAnim, {
+          toValue: 0,
+          duration,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    loop.start();
+    return () => loop.stop();
+  }, [sharedAnim, localAnim, duration]);
+
+  const opacity = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [minOpacity, maxOpacity],
+  });
+
+  const scale = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [minScale, maxScale],
+  });
+
+  return { opacity, scale };
+}
+
+function BlinkImage({
+  source,
+  style,
+  duration,
+  sharedAnim,
+}: {
+  source: any;
+  style?: any;
+  duration?: number;
+  sharedAnim?: Animated.Value;
+}) {
+  const { opacity, scale } = useBlink({ duration, sharedAnim });
+  return (
+    <Animated.Image
+      source={source}
+      style={[style, { opacity, transform: [{ scale }] }]}
+      resizeMode="contain"
+    />
+  );
+}
+
 /* ========== 아래 랭킹 리스트 ========== */
 
-type RankingRow = {
-  rank: number;
-  change: 'none' | 'up' | 'down';
+type RankingRaw = {
+  id: string;
   familyName: string;
-  score: string;
+  score: number; // 백엔드에서 이런 숫자만 내려온다고 가정
 };
 
-const rankingRows: RankingRow[] = [
-  { rank: 4, change: 'none', familyName: '민지네', score: '+47,195p' },
-  { rank: 5, change: 'none', familyName: '청소요정들', score: '+31,784p' },
-  { rank: 6, change: 'up', familyName: '잠안자고홈퀘', score: '+20,331p' },
-  { rank: 7, change: 'down', familyName: '오늘도1등각', score: '+17,228p' },
-  { rank: 8, change: 'none', familyName: '달리는중', score: '+16,742p' },
-  { rank: 9, change: 'none', familyName: '가보자고', score: '+15,369p' },
-  { rank: 10, change: 'up', familyName: '엄마아빠최고', score: '+14,205p' },
+type RankingRow = RankingRaw & {
+  rank: number;
+  prevRank: number;
+};
+
+const rankingRaw: RankingRaw[] = [
+  { id: 'minji', familyName: '민지네', score: 47195 },
+  { id: 'fairy', familyName: '청소요정들', score: 31784 },
+  { id: 'homeq', familyName: '잠안자고홈퀘', score: 20331 },
+  { id: 'first', familyName: '오늘도1등각', score: 17228 },
+  { id: 'run', familyName: '달리는중', score: 16742 },
+  { id: 'gogo', familyName: '가보자고', score: 15369 },
+  { id: 'momdad', familyName: '엄마아빠최고', score: 14205 },
 ];
 
+// score 기준으로 정렬 + rank/prevRank 계산
+function computeRanks(
+  raw: RankingRaw[],
+  prevMap?: Record<string, number>,
+): RankingRow[] {
+  const sorted = [...raw].sort((a, b) => b.score - a.score);
+  return sorted.map((r, i) => {
+    const newRank = i + 1;
+    const prevRank = prevMap?.[r.id] ?? newRank;
+    return { ...r, rank: newRank, prevRank };
+  });
+}
+
+// prevRank vs rank로 변화 계산
+function getChange(row: RankingRow): 'none' | 'up' | 'down' {
+  if (row.prevRank > row.rank) return 'up';
+  if (row.prevRank < row.rank) return 'down';
+  return 'none';
+}
+
 type RankingAllProps = {
+  rows: RankingRow[];
   onRowPress: (row: RankingRow) => void;
+  sharedAnim?: Animated.Value;
+  flashAnim: Animated.Value;
 };
 
-function RankingAll({ onRowPress }: RankingAllProps) {
+function RankingAll({
+  rows,
+  onRowPress,
+  sharedAnim,
+  flashAnim,
+}: RankingAllProps) {
   return (
     <View style={styles.rankingAll}>
-      {rankingRows.map((row) => {
-        let rowStyle = styles.rankRow;
-        if (row.rank === 6 || row.rank === 10) {
-          rowStyle = styles.rankRowUp;
-        } else if (row.rank === 7) {
-          rowStyle = styles.rankRowDown;
-        }
+      {rows.map((row) => {
+        const change = getChange(row);
+        const isUpRow = change === 'up';
+        const isDownRow = change === 'down';
 
-        const changeIcon =
-          row.change === 'up'
-            ? require('../../assets/images/up.png')
-            : row.change === 'down'
-              ? require('../../assets/images/down.png')
-              : null;
+        let bgStyle = styles.rankRow;
+        if (isUpRow) bgStyle = styles.rankRowUp;
+        if (isDownRow) bgStyle = styles.rankRowDown;
+
+        const changeIcon = isUpRow
+          ? require('../../assets/images/up.png')
+          : isDownRow
+            ? require('../../assets/images/down.png')
+            : null;
 
         return (
-          <TouchableOpacity
-            key={row.rank}
-            style={[styles.rankRowBase, rowStyle]}
-            activeOpacity={0.8}
-            onPress={() => onRowPress(row)}
+          <View
+            key={row.id}
+            style={[styles.rankRowBase, { position: 'relative' }]}
           >
-            <View style={styles.rankRowLeft}>
-              <Text style={styles.rankNumberText}>{row.rank}</Text>
-              {changeIcon ? (
-                <Image source={changeIcon} style={styles.rankChangeIcon} />
-              ) : (
-                <Text style={styles.rankChangeText}>-</Text>
-              )}
-            </View>
+            {(isUpRow || isDownRow) && (
+              <View style={[StyleSheet.absoluteFill, bgStyle]} />
+            )}
 
-            <View style={styles.rankRowCenter}>
-              <Text style={styles.rankFamilyName}>{row.familyName}</Text>
-            </View>
+            {(isUpRow || isDownRow) && (
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  bgStyle,
+                  { opacity: flashAnim },
+                ]}
+              />
+            )}
 
-            <View style={styles.rankRowRight}>
-              <Text style={styles.rankScoreText}>{row.score}</Text>
-            </View>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+              activeOpacity={0.8}
+              onPress={() => onRowPress(row)}
+            >
+              <View style={styles.rankRowLeft}>
+                <Text style={styles.rankNumberText}>{row.rank}</Text>
+
+                {changeIcon ? (
+                  <BlinkImage
+                    source={changeIcon}
+                    style={styles.rankChangeIcon}
+                    sharedAnim={sharedAnim}
+                  />
+                ) : (
+                  <Text style={styles.rankChangeText}>-</Text>
+                )}
+              </View>
+
+              <View style={styles.rankRowCenter}>
+                <Text style={styles.rankFamilyName}>{row.familyName}</Text>
+              </View>
+
+              <View style={styles.rankRowRight}>
+                <Text style={styles.rankScoreText}>
+                  +{row.score.toLocaleString()}p
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         );
       })}
     </View>
@@ -363,9 +556,116 @@ export function Ranking() {
 
   const [showReward, setShowReward] = useState(false);
 
-  // 화면 진입 로그
+  const [rows, setRows] = useState<RankingRow[]>(computeRanks(rankingRaw));
+
+  const sharedBlink = useRef(new Animated.Value(0)).current;
+
+  const flashAnim = useRef(new Animated.Value(0)).current;
+
+  const myFamilyId = 'homeq';
+  const myRow = rows.find((r) => r.id === myFamilyId);
+
+  const triggerBackgroundFlash = useCallback(() => {
+    flashAnim.setValue(0);
+
+    Animated.sequence([
+      Animated.timing(flashAnim, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [flashAnim]);
+
+  const applyBackendScores = (newRaw: RankingRaw[]) => {
+    setRows((prev) => {
+      const prevRankMap: Record<string, number> = {};
+      prev.forEach((p) => {
+        prevRankMap[p.id] = p.rank;
+      });
+
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+      return computeRanks(newRaw, prevRankMap);
+    });
+  };
+
+  // 1) sharedBlink 루프 + screen_view (한 번만)
   useEffect(() => {
     logRankingEvent('screen_view');
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sharedBlink, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(sharedBlink, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [sharedBlink]);
+
+  useEffect(() => {
+    triggerBackgroundFlash();
+  }, [triggerBackgroundFlash]);
+
+  // 2) 안드로이드 LayoutAnimation enable
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      UIManager.setLayoutAnimationEnabledExperimental?.(true);
+    }
+  }, []);
+
+  // 3) 진입 직후 자리 재정렬 + 애니메이션
+  useEffect(() => {
+    const t = setTimeout(() => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setRows((prev) => [...prev].sort((a, b) => a.rank - b.rank));
+    }, 80); // 0.08초만 늦춤
+
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      // 테스트용: homeq 점수 +20000
+      const newRaw = rankingRaw.map((r) => {
+        if (r.id === 'homeq') return { ...r, score: r.score + 20000 };
+        return r;
+      });
+
+      applyBackendScores(newRaw);
+    }, 5000);
+
+    return () => clearInterval(id);
   }, []);
 
   return (
@@ -378,7 +678,10 @@ export function Ranking() {
         <Header />
 
         <View style={styles.main}>
-          <MyRankingCard />
+          <MyRankingCard
+            familyName={myRow ? myRow.familyName : '잠안자고홈퀘'}
+            rank={myRow ? myRow.rank : null}
+          />
 
           <View style={styles.infoRow}>
             <RankingInfo
@@ -390,61 +693,93 @@ export function Ranking() {
             />
             <RandomBox onPress={() => setShowReward(true)} />
           </View>
-
           <View style={styles.top3Row}>
-            <View style={styles.secondPlaceWrapper}>
-              <TopPlaceCard
-                place={2}
-                familyName="가전왕패밀리"
-                scoreText="+72,538p"
-                statusText="1위상승"
-                statusType="up"
-                onPress={() =>
-                  logRankingEvent('top_place_press', {
-                    place: 2,
-                    family: '가전왕패밀리',
-                  })
-                }
-              />
-            </View>
+            {(() => {
+              // rows는 이미 score 기준으로 정렬+rank 계산된 상태
+              const first = rows.find((r) => r.rank === 1);
+              const second = rows.find((r) => r.rank === 2);
+              const third = rows.find((r) => r.rank === 3);
 
-            <View style={styles.firstPlaceWrapper}>
-              <TopPlaceCard
-                place={1}
-                familyName="1등은우리꺼"
-                scoreText="+83,912p"
-                statusText="-"
-                statusType="none"
-                onPress={() =>
-                  logRankingEvent('top_place_press', {
-                    place: 1,
-                    family: '1등은우리꺼',
-                  })
-                }
-              />
-            </View>
+              return (
+                <>
+                  {/* 2등(은) 왼쪽 */}
+                  <View style={styles.secondPlaceWrapper}>
+                    {second && (
+                      <TopPlaceCard
+                        key={second.id}
+                        place={2}
+                        familyName={second.familyName}
+                        scoreText={`+${second.score.toLocaleString()}p`}
+                        rank={second.rank}
+                        prevRank={second.prevRank}
+                        sharedAnim={sharedBlink}
+                        onPress={() =>
+                          logRankingEvent('top_place_press', {
+                            place: 2,
+                            family: second.familyName,
+                            rank: second.rank,
+                            prevRank: second.prevRank,
+                          })
+                        }
+                      />
+                    )}
+                  </View>
 
-            <View style={styles.thirdPlaceWrapper}>
-              <TopPlaceCard
-                place={3}
-                familyName="홈퀘함?"
-                scoreText="+61,284p"
-                statusText="1위하락"
-                statusType="down"
-                onPress={() =>
-                  logRankingEvent('top_place_press', {
-                    place: 3,
-                    family: '홈퀘함?',
-                  })
-                }
-              />
-            </View>
+                  {/* 1등(금) 가운데 */}
+                  <View style={styles.firstPlaceWrapper}>
+                    {first && (
+                      <TopPlaceCard
+                        key={first.id}
+                        place={1}
+                        familyName={first.familyName}
+                        scoreText={`+${first.score.toLocaleString()}p`}
+                        rank={first.rank}
+                        prevRank={first.prevRank}
+                        sharedAnim={sharedBlink}
+                        onPress={() =>
+                          logRankingEvent('top_place_press', {
+                            place: 1,
+                            family: first.familyName,
+                            rank: first.rank,
+                            prevRank: first.prevRank,
+                          })
+                        }
+                      />
+                    )}
+                  </View>
+
+                  {/* 3등(동) 오른쪽 */}
+                  <View style={styles.thirdPlaceWrapper}>
+                    {third && (
+                      <TopPlaceCard
+                        key={third.id}
+                        place={3}
+                        familyName={third.familyName}
+                        scoreText={`+${third.score.toLocaleString()}p`}
+                        rank={third.rank}
+                        prevRank={third.prevRank}
+                        sharedAnim={sharedBlink}
+                        onPress={() =>
+                          logRankingEvent('top_place_press', {
+                            place: 3,
+                            family: third.familyName,
+                            rank: third.rank,
+                            prevRank: third.prevRank,
+                          })
+                        }
+                      />
+                    )}
+                  </View>
+                </>
+              );
+            })()}
           </View>
 
           <RankingAll
-            onRowPress={(row) => {
-              logRankingEvent('rank_row_press', row);
-            }}
+            rows={rows}
+            sharedAnim={sharedBlink}
+            flashAnim={flashAnim}
+            onRowPress={(row) => logRankingEvent('rank_row_press', row)}
           />
         </View>
       </ScrollView>
@@ -676,7 +1011,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   randomGaugeFill: {
-    width: 30,
     height: '100%',
     backgroundColor: '#474747',
     borderTopLeftRadius: 8,
@@ -739,6 +1073,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 16,
   },
+  medalGlowInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#FFD54A', // 노란 글로우
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 14,
+    elevation: 10,
+  },
   topFamilyName: {
     marginTop: 50,
     fontSize: 12,
@@ -790,11 +1135,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   rankRowUp: {
-    backgroundColor: 'rgba(226, 178, 178, 0.4)',
+    backgroundColor: 'rgba(255, 120, 120, 0.25)',
     borderRadius: 8,
   },
   rankRowDown: {
-    backgroundColor: 'rgba(169, 172, 225, 0.4)',
+    backgroundColor: 'rgba(120, 140, 255, 0.25)',
     borderRadius: 8,
   },
   rankRowLeft: {
@@ -848,6 +1193,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.25)',
+    zIndex: 9999, // iOS
+    elevation: 9999, // Android
   },
   tooltipArrow: {
     position: 'absolute',
@@ -890,7 +1237,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'center',
     height: 75,
-    backgroundColor: '#FFFFFF',
+
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
     shadowColor: '#000',
@@ -917,6 +1264,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 9999, // iOS
+    elevation: 9999, // Android
   },
   rewardCard: {
     width: 280,
