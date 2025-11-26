@@ -3,20 +3,23 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  SafeAreaView,
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
-  Image,
-  Alert,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
+import { useAuthStore } from '@/src/store/useAuthStore';
 
 export default function OnboardingProfile() {
   const router = useRouter();
+  const saveOnboardingProfile = useAuthStore((s) => s.saveOnboardingProfile);
 
   const [nickname, setNickname] = useState('');
   const [familyRole, setFamilyRole] = useState('');
@@ -85,8 +88,16 @@ export default function OnboardingProfile() {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isNextDisabled) return;
+
+    // 닉네임/역할/거주지 Firestore + store에 저장
+    await saveOnboardingProfile({
+      nickName: nickname,
+      familyRole,
+      location,
+    });
+
     router.push('/onboarding-avatar');
   };
 
