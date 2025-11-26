@@ -1,17 +1,17 @@
 // app/signup.tsx
 import { useRouter } from 'expo-router';
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
-  View,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Image,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  View,
 } from 'react-native';
 
 import { useAuthStore } from '@/src/store/useAuthStore';
@@ -19,8 +19,6 @@ import { useAuthStore } from '@/src/store/useAuthStore';
 export default function SignupScreen() {
   const router = useRouter();
   const { signUp, isLoading } = useAuthStore();
-
-  const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [emailLocal, setEmailLocal] = useState('');
@@ -39,7 +37,6 @@ export default function SignupScreen() {
   const isValidEmail = (s: string) => /\S+@\S+\.\S+/.test(s); // 기존보다 느슨
   const isValidPhone = (s: string) => /^01[0-9]\d{7,8}$/.test(s);
   const canSubmit =
-    userId.trim().length > 0 &&
     password.length > 0 &&
     password === password2 &&
     isValidEmail(email) &&
@@ -51,7 +48,7 @@ export default function SignupScreen() {
     try {
       console.log('[SignupScreen handleSubmit] email =', email);
 
-      await signUp({ userId, password, email, phone });
+      await signUp({ email, password, phone });
       // 실제로는 {userId, password, email, phone} 등 서버 스펙에 맞추세요
       router.replace('/login'); // 회원가입 후 로그인 화면으로
     } catch (e) {
@@ -89,30 +86,35 @@ export default function SignupScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* 아이디 */}
+          {/* 이메일 */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>아이디</Text>
+            <Text style={styles.fieldLabel}>이메일</Text>
 
             <View style={styles.row}>
-              <View style={styles.inputWithIcon}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="아이디"
-                  placeholderTextColor="#C4C4C4"
-                  value={userId}
-                  onChangeText={setUserId}
-                />
-                {/* 입력값 지우기 아이콘 */}
-                <TouchableOpacity style={styles.clearButton}>
-                  <Image
-                    source={require('../assets/images/si_close-circle-fill.png')}
-                    style={styles.clearIcon}
-                  />
-                </TouchableOpacity>
-              </View>
+              <TextInput
+                style={[styles.input, styles.emailLeftInput]}
+                placeholder="이메일"
+                placeholderTextColor="#C4C4C4"
+                value={emailLocal}
+                onChangeText={setEmailLocal}
+              />
 
-              <TouchableOpacity style={styles.smallButton} activeOpacity={0.8}>
-                <Text style={styles.smallButtonText}>중복확인</Text>
+              <Text style={styles.atText}>@</Text>
+
+              <TouchableOpacity
+                style={[styles.input, styles.emailRightInput]}
+                activeOpacity={0.8}
+                onPress={() => setEmailDomain('gmail.com')}
+              >
+                <View style={styles.emailRightInner}>
+                  <Text style={styles.emailRightPlaceholder}>
+                    {emailDomain || '선택'}
+                  </Text>
+                  <Image
+                    source={require('../assets/images/si_expand-more-duotone.png')}
+                    style={styles.dropdownIcon}
+                  />
+                </View>
               </TouchableOpacity>
             </View>
           </View>
@@ -145,39 +147,6 @@ export default function SignupScreen() {
               value={password2} // ✅ 바인딩 추가
               onChangeText={setPassword2}
             />
-          </View>
-
-          {/* 이메일 */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>이메일</Text>
-
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.emailLeftInput]}
-                placeholder="이메일"
-                placeholderTextColor="#C4C4C4"
-                value={emailLocal}
-                onChangeText={setEmailLocal}
-              />
-
-              <Text style={styles.atText}>@</Text>
-
-              <TouchableOpacity
-                style={[styles.input, styles.emailRightInput]}
-                activeOpacity={0.8}
-                onPress={() => setEmailDomain('gmail.com')}
-              >
-                <View style={styles.emailRightInner}>
-                  <Text style={styles.emailRightPlaceholder}>
-                    {emailDomain || '선택'}
-                  </Text>
-                  <Image
-                    source={require('../assets/images/si_expand-more-duotone.png')}
-                    style={styles.dropdownIcon}
-                  />
-                </View>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* 휴대폰 번호 */}

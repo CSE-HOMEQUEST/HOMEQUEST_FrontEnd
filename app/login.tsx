@@ -62,7 +62,7 @@ export default function LoginScreen() {
         {/* 아이디 입력 */}
         <TextInput
           style={styles.input}
-          placeholder="아이디 입력"
+          placeholder="이메일 입력"
           placeholderTextColor="#C4C4C4"
           value={email}
           onChangeText={setEmail}

@@ -3,29 +3,44 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import {
+  apiLogin,
+  apiSignUp,
+  apiUpdateProfile,
+} from '@/src/services/authService';
+
 type User = {
-  email: string; // 여기에는 지금 "아이디"를 넣어서 쓰고 있어도 됨
-  userId?: string;
+  email: string;
+  userId?: string; // uid
   phone?: string;
+  nickName?: string; // !! 온보딩 프로필에서 채워질 닉네임
+  familyRole?: string; // !! 온보딩 프로필
+  location?: string; // !! 온보딩 프로필
   firstLogin?: boolean; // true = 첫 로그인 → 온보딩 필요
 };
 
 type AuthState = {
   user: User | null;
-  token: string | null;
+  token: string | null; // 여기서는 uid를 넣어서 사용
   isLoading: boolean;
   hydrateDone: boolean;
 
-  // 최근 회원가입한 아이디 (그 아이디로 첫 로그인하면 온보딩으로)
+  // 최근 회원가입한 이메일 (그 이메일로 첫 로그인하면 온보딩)
   lastSignedUpId: string | null;
 
-  login: (id: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   signUp: (p: {
-    userId: string;
-    password: string;
     email: string;
+    password: string;
     phone: string;
+  }) => Promise<void>;
+
+  // 온보딩에서 프로필 저장 (닉네임/역할/거주지)
+  saveOnboardingProfile: (p: {
+    nickName: string;
+    familyRole: string;
+    location: string;
   }) => Promise<void>;
 
   finishOnboarding: () => void;
@@ -38,53 +53,93 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isLoading: false,
       hydrateDone: false,
-
-      // 새로 추가한 필드 초기값
       lastSignedUpId: null,
 
       // 로그인
-      login: async (id, _password) => {
-        set({ isLoading: true });
-        await new Promise((r) => setTimeout(r, 400));
-
-        const { lastSignedUpId } = get();
-        const isFirstLogin = lastSignedUpId === id;
-
-        set({
-          // email 자리에 아이디(id)를 그냥 넣어서 사용 중
-          user: { email: id, firstLogin: isFirstLogin },
-          token: 'demo-token-123',
-          isLoading: false,
-          lastSignedUpId: isFirstLogin ? null : lastSignedUpId,
-        });
-
-        console.log('[store:login set]', { id, isFirstLogin });
-      },
-
-      // 회원가입
-      signUp: async ({
-        userId,
-        password: _password,
-        email: _email,
-        phone: _phone,
-      }) => {
+      login: async (email, password) => {
         set({ isLoading: true });
         try {
-          // TODO: 실제 회원가입 API 호출
-          await new Promise((r) => setTimeout(r, 400));
+          const { uid, profile } = await apiLogin(email, password);
+          const { lastSignedUpId } = get();
+          const isFirstLogin = lastSignedUpId === email;
 
-          // 최근 회원가입 아이디 저장
           set({
-            lastSignedUpId: userId,
+            user: {
+              email: profile.email ?? email,
+              userId: uid,
+              phone: profile.phone ?? undefined,
+              nickName: profile.nickName ?? undefined,
+              familyRole: profile.roleInFamily ?? undefined,
+              location: profile.location ?? undefined,
+              firstLogin: isFirstLogin,
+            },
+            token: uid,
+            isLoading: false,
+            lastSignedUpId: isFirstLogin ? null : lastSignedUpId,
           });
 
-          console.log('[store:signUp] lastSignedUpId =', userId);
+          console.log('[store:login set]', { email, uid, isFirstLogin });
+        } catch (e) {
+          set({ isLoading: false });
+          console.log('[store:login error]', e);
+          throw e;
+        }
+      },
+
+      // 회원가입 (이메일/비번/폰만)
+      signUp: async ({ email, password, phone }) => {
+        set({ isLoading: true });
+        try {
+          await apiSignUp({
+            email,
+            password,
+            phone,
+          });
+
+          set({
+            lastSignedUpId: email,
+          });
+
+          console.log('[store:signUp] saved lastSignedUpId =', email);
         } finally {
           set({ isLoading: false });
         }
       },
 
-      // 온보딩 완료
+      // 온보딩 프로필 저장 (닉네임/역할/거주지)
+      saveOnboardingProfile: async ({ nickName, familyRole, location }) => {
+        const state = get();
+        const uid = state.token;
+        const curUser = state.user;
+        if (!uid || !curUser) {
+          console.warn('[saveOnboardingProfile] no user/uid');
+          return;
+        }
+
+        await apiUpdateProfile(uid, {
+          nickName,
+          roleInFamily: familyRole,
+          location,
+        });
+
+        set({
+          user: {
+            ...curUser,
+            nickName,
+            familyRole,
+            location,
+          },
+        });
+
+        console.log('[store:saveOnboardingProfile]', {
+          uid,
+          nickName,
+          familyRole,
+          location,
+        });
+      },
+
+      // 온보딩 완료 (OnboardingFamily에서 호출)
       finishOnboarding: () => {
         const cur = get().user;
         if (!cur) return;
@@ -106,7 +161,6 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // 어떤 값들을 AsyncStorage에 저장할지 선택
       partialize: (s) => ({
         user: s.user,
         token: s.token,
