@@ -1,7 +1,9 @@
-// src/store/useChallengeStore.ts
+// src/store/useChallengeStore.tsx
 import { create } from 'zustand';
 
 import { useRewardStore } from '../store/useRewardStore';
+
+import { challengeService } from '@/src/services/challengeService';
 
 /** 공통 타입 */
 export type Filter = '전체' | '절약' | '가사' | '헬스' | '나' | '가족';
@@ -17,31 +19,6 @@ export type Challenge = {
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
-
-/** 임시 API */
-const api = {
-  getOngoing: async (): Promise<Challenge[]> =>
-    new Promise((r) => setTimeout(() => r([]), 150)),
-
-  getRecommended: async ({
-    filter: _filter,
-    cursor: _cursor,
-  }: {
-    filter: Filter;
-    cursor?: string | null;
-  }): Promise<Page<Challenge>> =>
-    new Promise((r) => setTimeout(() => r({ items: [], cursor: null }), 150)),
-
-  startChallenge: async (_: { id: string }) =>
-    new Promise((r) => setTimeout(r, 150)),
-
-  completeChallenge: async (_: { id: string }) =>
-    new Promise<{ rewardPoints: number }>((r) =>
-      setTimeout(() => r({ rewardPoints: 40 }), 150),
-    ),
-
-  dismiss: async (_: { id: string }) => new Promise((r) => setTimeout(r, 100)),
-};
 
 /** 상태 정의 */
 type State = {
@@ -83,14 +60,36 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   hydrate: async () => {
     set((s) => ({ loading: { ...s.loading, init: true }, error: null }));
     try {
-      const ongoing = await api.getOngoing();
-      const recPage = await api.getRecommended({
+      // 1) Firestore에서 읽기
+      const ongoingRaw = await challengeService.getOngoing();
+      const recPage = await challengeService.getRecommended({
         filter: get().currentFilter,
       });
 
+      // 2) 우리 앱 Challenge 타입으로 변환
+      const ongoing: Challenge[] = ongoingRaw.map((d: any) => ({
+        id: d.challengeId,
+        title: d.title,
+        category: d.category, // '나' | '가족'
+        status: 'ongoing',
+        progressPct: d.progressPct ?? 0,
+        rewardPoints: d.rewardPoints ?? 0,
+      }));
+
+      const recommended: Challenge[] = recPage.items.map((dto) => ({
+        id: dto.id,
+        title: dto.title,
+        category: dto.mode === 'personal' ? '나' : '가족',
+        status: 'recommended',
+        rewardPoints:
+          dto.mode === 'personal'
+            ? dto.basePersonalPoints
+            : dto.baseFamilyPoints,
+      }));
+
       set((s) => ({
         ongoing,
-        recommended: recPage.items,
+        recommended,
         recCursor: recPage.cursor ?? null,
         loading: { ...s.loading, init: false },
       }));
@@ -110,15 +109,25 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     if (cur === null) return;
 
     set((s) => ({ loading: { ...s.loading, recMore: true } }));
-
     try {
-      const page = await api.getRecommended({
+      const page = await challengeService.getRecommended({
         filter: get().currentFilter,
         cursor: cur,
       });
 
+      const more: Challenge[] = page.items.map((dto) => ({
+        id: dto.id,
+        title: dto.title,
+        category: dto.mode === 'personal' ? '나' : '가족',
+        status: 'recommended',
+        rewardPoints:
+          dto.mode === 'personal'
+            ? dto.basePersonalPoints
+            : dto.baseFamilyPoints,
+      }));
+
       set((s) => ({
-        recommended: [...s.recommended, ...page.items],
+        recommended: [...s.recommended, ...more],
         recCursor: page.cursor ?? null,
         loading: { ...s.loading, recMore: false },
       }));
@@ -134,7 +143,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       챌린지 시작
   ----------------------------- */
   startChallenge: async (id) => {
-    await api.startChallenge({ id });
+    await challengeService.startChallenge(id);
 
     set((s) => {
       const rec = s.recommended.filter((c) => c.id !== id);
@@ -172,57 +181,46 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       (여기서 개인/가족 리워드 & 타임라인 분리됨)
   ----------------------------- */
   completeChallenge: async (id) => {
+    const res = await challengeService.completeChallenge(id);
+    const { rewardPoints, category, title } = res;
+
     const state = get();
-    const target = state.ongoing.find((c) => c.id === id);
-    if (!target) return;
-
-    await api.completeChallenge({ id });
-
-    const reward = target.rewardPoints ?? 0;
     const rewardStore = useRewardStore.getState();
-
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-    /* -----------------------------
-          개인 챌린지인 경우
-    ----------------------------- */
-    if (target.category === '나') {
+    // 개인 챌린지의 경우
+    if (category === '나') {
       rewardStore.setMyReward({
-        currentPoint: rewardStore.myPoint + reward,
+        currentPoint: rewardStore.myPoint + rewardPoints,
         expectedPoint: state.ongoing
           .filter((c) => c.id !== id)
           .reduce((s, c) => s + (c.rewardPoints ?? 0), 0),
       });
-
       rewardStore.addMyHistory({
         id: Date.now(),
         date: today,
-        label: target.title,
-        point: reward,
+        label: title,
+        point: rewardPoints,
         type: 'earn',
       });
-    } else if (target.category === '가족') {
-      /* -----------------------------
-          가족 챌린지인 경우
-    ----------------------------- */
+
+      // 가족 챌린지의 경우
+    } else if (category === '가족') {
       rewardStore.setFamilyReward({
-        total: rewardStore.familyTotal + reward,
+        total: rewardStore.familyTotal + rewardPoints,
         weeklyRank: rewardStore.weeklyRank,
         monthlyRank: rewardStore.monthlyRank,
       });
-
       rewardStore.addFamilyHistory({
         id: Date.now(),
         date: today,
-        label: target.title,
-        point: reward,
+        label: title,
+        point: rewardPoints,
         type: 'earn',
       });
     }
 
-    /* -----------------------------
-         ongoing에서 제거
-    ----------------------------- */
+    // ongoing 목록에서 제거
     set((s) => ({
       ongoing: s.ongoing.filter((c) => c.id !== id),
     }));
@@ -232,7 +230,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       추천 제거(dismiss)
   ----------------------------- */
   dismissRecommendation: async (id) => {
-    await api.dismiss({ id });
+    // 필요하면 service에 dismiss API 추가
     set((s) => ({
       recommended: s.recommended.filter((c) => c.id !== id),
     }));
