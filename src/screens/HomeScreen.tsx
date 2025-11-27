@@ -17,7 +17,10 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  withTiming,
 } from 'react-native-reanimated';
+
+import { useChallengeStore } from '@/src/store/useChallengeStore';
 
 /* ────────────── Header ────────────── */
 function Header() {
@@ -49,6 +52,27 @@ function RoomBlock() {
   const lastTranslateX = useSharedValue(0);
   const lastTranslateY = useSharedValue(0);
   const navigation = useNavigation<NavigationProp<any>>();
+  const glowOpacity = useSharedValue(0);
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+  }));
+
+  const triggerGlow = () => {
+    glowOpacity.value = 0;
+    glowOpacity.value = withTiming(0.8, { duration: 1000 }, () => {
+      glowOpacity.value = withTiming(0, { duration: 5000 });
+    });
+  };
+  const lastCompleted = useChallengeStore((s) => s.effects.lastCompleted);
+  const resetEffect = useChallengeStore.getState().resetEffect;
+
+  React.useEffect(() => {
+    if (lastCompleted === 'jin') {
+      triggerGlow();
+      resetEffect();
+    }
+  });
 
   // Pinch & Pan Gesture 설정
   const pinch = Gesture.Pinch()
@@ -120,6 +144,21 @@ function RoomBlock() {
           onPress={() => navigation.navigate('Character_2')}
           style={styles.character2Touchable}
         >
+          <Animated.Image
+            source={require('../../assets/rooms/glow_2.png')}
+            style={[
+              {
+                position: 'absolute',
+                width: 150, // glow 크기
+                height: 150,
+                left: -40, // jin 중심에 맞게 오프셋 조정
+                top: -40,
+                opacity: 0, // 기본은 안 보임
+              },
+              glowStyle,
+            ]}
+            resizeMode="contain"
+          />
           <Image
             source={require('../../assets/rooms/jin.png')}
             style={styles.character2}
@@ -189,6 +228,44 @@ function TodayReportPopup({
   visible: boolean;
   onClose: () => void;
 }) {
+  const completed = useChallengeStore((s) => s.completed);
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  //날짜 계산 (오늘, 이번주, 이번달 챌린지 표시를 위해)
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  endOfWeek.setHours(23, 59, 59, 999);
+  const toDate = (d?: string) => (d ? new Date(d) : null);
+  // 이번 달 가족 챌린지 중 가장 최근 1개
+  const monthlyFamily = [...completed]
+    .filter((c) => {
+      if (c.category !== '가족' || !c.completedAt) return false;
+      const d = toDate(c.completedAt);
+      if (!d) return false;
+      return d.getFullYear() === year && d.getMonth() === month;
+    })
+    .slice(-1)[0];
+
+  // 이번 주 가족 챌린지 중 가장 최근 1개
+  const weeklyFamily = [...completed]
+    .filter((c) => {
+      if (c.category !== '가족' || !c.completedAt) return false;
+      const d = toDate(c.completedAt);
+      if (!d) return false;
+      return d >= startOfWeek && d <= endOfWeek;
+    })
+    .slice(-1)[0];
+
+  // 오늘 개인 챌린지 중 가장 최근 1개
+  const todayPersonal = [...completed]
+    .filter((c) => c.category === '나' && c.completedAt === todayStr)
+    .slice(-1)[0];
+
   return (
     <Modal transparent animationType="fade" visible={visible}>
       <View style={styles.overlay}>
@@ -207,38 +284,82 @@ function TodayReportPopup({
           <View style={styles.line2} />
 
           {/* 챌린지 요약 */}
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              이번 달의 가족 챌린지 : 난방 절약 성공!
-            </Text>
-            <Text style={styles.point}>+40p</Text>
-          </View>
-
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              이번 주의 가족 챌린지 : {'\n'}릴레이 로봇청소기 돌리기 성공
-            </Text>
-            <Text style={styles.point}>+50p</Text>
-          </View>
-
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              오늘의 개인 챌린지 : 아침에 물 한잔 마시기
-            </Text>
-            <Text style={styles.point}>+10p</Text>
-          </View>
+          {monthlyFamily ? (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 달의 가족 챌린지 : {monthlyFamily.title} 성공!
+              </Text>
+              <Text style={styles.point}>
+                +{monthlyFamily.rewardPoints ?? 0}p
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 달의 가족 챌린지 : 아직 완료된 챌린지가 없습니다.
+              </Text>
+              <Text style={styles.point}>+0p</Text>
+            </View>
+          )}
+          {weeklyFamily ? (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 주의 가족 챌린지 : {'\n'}
+                {weeklyFamily.title} 성공!
+              </Text>
+              <Text style={styles.point}>
+                +{weeklyFamily.rewardPoints ?? 0}p
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 주의 가족 챌린지 : 아직 완료된 챌린지가 없습니다.
+              </Text>
+              <Text style={styles.point}>+0p</Text>
+            </View>
+          )}
+          {todayPersonal ? (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 개인 챌린지 : {todayPersonal.title} 성공!
+              </Text>
+              <Text style={styles.point}>
+                +{todayPersonal.rewardPoints ?? 0}p
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 개인 챌린지 : 아직 완료된 챌린지가 없습니다.
+              </Text>
+              <Text style={styles.point}>+0p</Text>
+            </View>
+          )}
 
           {/* 확인 버튼 */}
           <TouchableOpacity style={styles.confirmButton} onPress={onClose}>
@@ -448,7 +569,8 @@ const styles = StyleSheet.create({
   },
   reportCard: {
     width: 335,
-    height: 387,
+    minHeight: 387,
+    maxHeight: '80%',
     backgroundColor: '#FFFFFF',
     borderRadius: 30,
     padding: 20,
@@ -514,6 +636,7 @@ const styles = StyleSheet.create({
     color: '#000',
     flex: 1,
     textAlignVertical: 'center',
+    maxWidth: 220,
   },
   point: {
     fontFamily: 'Roboto-Medium',
@@ -530,7 +653,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#353535',
     borderRadius: 8,
     paddingVertical: 10,
-    marginTop: 8,
+    marginTop: 10,
     alignItems: 'center',
     width: 293,
     height: 43,

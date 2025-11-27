@@ -14,6 +14,7 @@ export type Challenge = {
   progressPct?: number;
   rewardPoints?: number;
   duration?: number;
+  completedAt?: string;
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -51,6 +52,10 @@ type State = {
   recCursor: string | null;
   loading: { init: boolean; recMore: boolean; refresh: boolean };
   error?: string | null;
+  completed: Challenge[];
+  effects: {
+    lastCompleted: null | 'jin';
+  };
 };
 
 type Actions = {
@@ -61,6 +66,7 @@ type Actions = {
   updateProgress: (id: string, pct: number) => void;
   completeChallenge: (id: string) => Promise<void>;
   dismissRecommendation: (id: string) => Promise<void>;
+  resetEffect: () => void;
 };
 
 /** Store 생성 */
@@ -71,6 +77,10 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   recCursor: null,
   loading: { init: true, recMore: false, refresh: false },
   error: null,
+  completed: [],
+  effects: {
+    lastCompleted: null,
+  },
 
   /* -----------------------------
       필터 변경
@@ -182,6 +192,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     const rewardStore = useRewardStore.getState();
 
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+    const completedAt = new Date().toISOString().slice(0, 10);
 
     /* -----------------------------
           개인 챌린지인 경우
@@ -220,12 +231,28 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
     }
 
+    set((s) => ({
+      completed: [
+        ...s.completed,
+        { ...target, completedAt }, // YYYY-MM-DD
+      ],
+    }));
+
     /* -----------------------------
          ongoing에서 제거
     ----------------------------- */
     set((s) => ({
       ongoing: s.ongoing.filter((c) => c.id !== id),
     }));
+
+    if (target.category === '나' || target.category === '가족') {
+      set((s) => ({
+        effects: {
+          ...s.effects,
+          lastCompleted: 'jin',
+        },
+      }));
+    }
   },
 
   /* -----------------------------
@@ -235,6 +262,14 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     await api.dismiss({ id });
     set((s) => ({
       recommended: s.recommended.filter((c) => c.id !== id),
+    }));
+  },
+  resetEffect: () => {
+    set((s) => ({
+      effects: {
+        ...s.effects,
+        lastCompleted: null,
+      },
     }));
   },
 }));
