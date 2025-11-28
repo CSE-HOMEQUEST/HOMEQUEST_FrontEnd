@@ -66,6 +66,9 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         filter: get().currentFilter,
       });
 
+      console.log('🔥 hydrate | ongoingRaw:', ongoingRaw);
+      console.log('🔥 hydrate | recommendedRaw:', recPage.items);
+
       // 2) 우리 앱 Challenge 타입으로 변환
       const ongoing: Challenge[] = ongoingRaw.map((d: any) => ({
         id: d.challengeId,
@@ -86,6 +89,9 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
             ? dto.basePersonalPoints
             : dto.baseFamilyPoints,
       }));
+
+      console.log('🔥 hydrate | mapped ongoing:', ongoing);
+      console.log('🔥 hydrate | mapped recommended:', recommended);
 
       set((s) => ({
         ongoing,
