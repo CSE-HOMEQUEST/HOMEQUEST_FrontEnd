@@ -30,7 +30,7 @@ export type ChallengeDto = {
   createdAt?: string;
 };
 
-// progress 문서 타입 (네가 말한 ChallengeProgressDto)
+// ChallengeProgressDto (progress 문서 타입)
 export type ChallengeProgressDoc = {
   progressId: string; // 문서 id
   challengeId: string;

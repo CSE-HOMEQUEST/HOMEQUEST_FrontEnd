@@ -1,20 +1,22 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
   Animated,
   Easing,
+  Image,
   LayoutAnimation,
   Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
   UIManager,
+  View,
 } from 'react-native';
+
+import { rankingService } from '../services/rankingService';
 
 const rankingSwapLayout = {
   duration: 750, // 전체 애니메이션 길이
@@ -683,6 +685,16 @@ export function Ranking() {
     }, 5000);
 
     return () => clearInterval(id);
+  }, []);
+
+  // 4) 가족 totalPoints 일괄 조회 (디버그용)
+  useEffect(() => {
+    async function load() {
+      const list = await rankingService.getAllFamilyTotalPoints();
+      logRankingEvent('all_family_points', list);
+    }
+
+    load();
   }, []);
 
   return (
