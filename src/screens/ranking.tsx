@@ -5,35 +5,19 @@ import {
   Animated,
   Easing,
   Image,
-  LayoutAnimation,
-  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  UIManager,
   View,
 } from 'react-native';
 
+import {
+  RankingList,
+  RankingRow as RankingListRow,
+} from '../components/RankingList';
 import { rankingService } from '../services/rankingService';
-
-const rankingSwapLayout = {
-  duration: 750, // 전체 애니메이션 길이
-  create: {
-    type: LayoutAnimation.Types.easeInEaseOut,
-    property: LayoutAnimation.Properties.opacity,
-  },
-  update: {
-    // 핵심: 위치 변경은 spring 으로
-    type: LayoutAnimation.Types.spring,
-    springDamping: 0.8,
-  },
-  delete: {
-    type: LayoutAnimation.Types.easeInEaseOut,
-    property: LayoutAnimation.Properties.opacity,
-  },
-} as const;
 
 /* ========== 공통 로깅 함수 ========== */
 function logRankingEvent(event: string, payload?: any) {
@@ -76,7 +60,6 @@ type MyRankingCardProps = {
 };
 
 function MyRankingCard({ familyName, rank }: MyRankingCardProps) {
-  // 순위가 아직 없으면 -위로 표시
   const rankText = rank != null ? `${rank}위` : '-위';
 
   return (
@@ -160,9 +143,9 @@ function RandomBox({ onPress }: RandomBoxProps) {
     const loop = Animated.loop(
       Animated.timing(progress, {
         toValue: 1,
-        duration: 20000, // 20초 동안 천천히 차오름
+        duration: 20000,
         easing: Easing.linear,
-        useNativeDriver: false, // width라서 false
+        useNativeDriver: false,
       }),
     );
     loop.start();
@@ -186,6 +169,8 @@ function RandomBox({ onPress }: RandomBoxProps) {
     </TouchableOpacity>
   );
 }
+
+/* ========== 보상 모달 ========== */
 
 type RewardModalProps = {
   point: number;
@@ -219,10 +204,8 @@ type TopPlaceProps = {
   place: 1 | 2 | 3;
   familyName: string;
   scoreText: string;
-
   rank: number;
   prevRank: number;
-
   onPress?: () => void;
   sharedAnim?: Animated.Value;
 };
@@ -246,8 +229,6 @@ function TopPlaceCard({
   const change: 'none' | 'up' | 'down' =
     prevRank > rank ? 'up' : prevRank < rank ? 'down' : 'none';
 
-  const statusType = change;
-
   const statusText =
     change === 'up'
       ? `${prevRank - rank}위상승`
@@ -256,9 +237,9 @@ function TopPlaceCard({
         : '-';
 
   const statusIconSource =
-    statusType === 'up'
+    change === 'up'
       ? require('../../assets/images/up.png')
-      : statusType === 'down'
+      : change === 'down'
         ? require('../../assets/images/down.png')
         : null;
 
@@ -270,7 +251,6 @@ function TopPlaceCard({
     >
       <View style={styles.topCardFrame} />
 
-      {/* 메달 본체 펄스 */}
       <BlinkImage
         source={medalSource}
         style={styles.medalIcon}
@@ -293,7 +273,7 @@ function TopPlaceCard({
 /* ========== 반짝이는 효과 ========== */
 
 function useBlink(options?: {
-  sharedAnim?: Animated.Value; // 추가: 외부 애니메이션 쓰면 타이밍 동기화
+  sharedAnim?: Animated.Value;
   duration?: number;
   minOpacity?: number;
   maxOpacity?: number;
@@ -313,7 +293,7 @@ function useBlink(options?: {
   const anim = sharedAnim ?? localAnim;
 
   useEffect(() => {
-    if (sharedAnim) return; // sharedAnim 쓰면 여기서 loop 안 돌림
+    if (sharedAnim) return;
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -370,12 +350,12 @@ function BlinkImage({
   );
 }
 
-/* ========== 아래 랭킹 리스트 ========== */
+/* ========== 랭킹 데이터 타입 ========== */
 
 type RankingRaw = {
   id: string;
   familyName: string;
-  score: number; // 백엔드에서 이런 숫자만 내려온다고 가정
+  score: number;
 };
 
 type RankingRow = RankingRaw & {
@@ -383,17 +363,6 @@ type RankingRow = RankingRaw & {
   prevRank: number;
 };
 
-const rankingRaw: RankingRaw[] = [
-  { id: 'minji', familyName: '민지네', score: 47195 },
-  { id: 'fairy', familyName: '청소요정들', score: 31784 },
-  { id: 'homeq', familyName: '잠안자고홈퀘', score: 20331 },
-  { id: 'first', familyName: '오늘도1등각', score: 17228 },
-  { id: 'run', familyName: '달리는중', score: 16742 },
-  { id: 'gogo', familyName: '가보자고', score: 15369 },
-  { id: 'momdad', familyName: '엄마아빠최고', score: 14205 },
-];
-
-// score 기준으로 정렬 + rank/prevRank 계산
 function computeRanks(
   raw: RankingRaw[],
   prevMap?: Record<string, number>,
@@ -404,98 +373,6 @@ function computeRanks(
     const prevRank = prevMap?.[r.id] ?? newRank;
     return { ...r, rank: newRank, prevRank };
   });
-}
-
-// prevRank vs rank로 변화 계산
-function getChange(row: RankingRow): 'none' | 'up' | 'down' {
-  if (row.prevRank > row.rank) return 'up';
-  if (row.prevRank < row.rank) return 'down';
-  return 'none';
-}
-
-type RankingAllProps = {
-  rows: RankingRow[];
-  onRowPress: (row: RankingRow) => void;
-  sharedAnim?: Animated.Value;
-  flashAnim: Animated.Value;
-};
-
-function RankingAll({
-  rows,
-  onRowPress,
-  sharedAnim,
-  flashAnim,
-}: RankingAllProps) {
-  return (
-    <View style={styles.rankingAll}>
-      {rows.map((row) => {
-        const change = getChange(row);
-        const isUpRow = change === 'up';
-        const isDownRow = change === 'down';
-
-        let bgStyle = styles.rankRow;
-        if (isUpRow) bgStyle = styles.rankRowUp;
-        if (isDownRow) bgStyle = styles.rankRowDown;
-
-        const changeIcon = isUpRow
-          ? require('../../assets/images/up.png')
-          : isDownRow
-            ? require('../../assets/images/down.png')
-            : null;
-
-        return (
-          <View
-            key={row.id}
-            style={[styles.rankRowBase, { position: 'relative' }]}
-          >
-            {(isUpRow || isDownRow) && (
-              <View style={[StyleSheet.absoluteFill, bgStyle]} />
-            )}
-
-            {(isUpRow || isDownRow) && (
-              <Animated.View
-                style={[
-                  StyleSheet.absoluteFill,
-                  bgStyle,
-                  { opacity: flashAnim },
-                ]}
-              />
-            )}
-
-            <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-              activeOpacity={0.8}
-              onPress={() => onRowPress(row)}
-            >
-              <View style={styles.rankRowLeft}>
-                <Text style={styles.rankNumberText}>{row.rank}</Text>
-
-                {changeIcon ? (
-                  <BlinkImage
-                    source={changeIcon}
-                    style={styles.rankChangeIcon}
-                    sharedAnim={sharedAnim}
-                  />
-                ) : (
-                  <Text style={styles.rankChangeText}>-</Text>
-                )}
-              </View>
-
-              <View style={styles.rankRowCenter}>
-                <Text style={styles.rankFamilyName}>{row.familyName}</Text>
-              </View>
-
-              <View style={styles.rankRowRight}>
-                <Text style={styles.rankScoreText}>
-                  +{row.score.toLocaleString()}p
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        );
-      })}
-    </View>
-  );
 }
 
 /* ========== 하단 탭 바 ========== */
@@ -550,7 +427,6 @@ function BottomTabBar() {
         activeOpacity={0.7}
         onPress={() => {
           logRankingEvent('tab_click', 'Ranking');
-          // 이미 Ranking 탭이라 이동은 필요 없음
         }}
       >
         <Image
@@ -574,61 +450,14 @@ export function Ranking() {
   } | null>(null);
 
   const [showReward, setShowReward] = useState(false);
-
-  const [rows, setRows] = useState<RankingRow[]>(computeRanks(rankingRaw));
+  const [rows, setRows] = useState<RankingListRow[]>([]);
 
   const sharedBlink = useRef(new Animated.Value(0)).current;
 
-  const flashAnim = useRef(new Animated.Value(0)).current;
-
-  const myFamilyId = 'homeq';
+  const myFamilyId = 'fam_007';
   const myRow = rows.find((r) => r.id === myFamilyId);
 
-  const triggerBackgroundFlash = useCallback(() => {
-    flashAnim.setValue(0);
-
-    Animated.sequence([
-      Animated.timing(flashAnim, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [flashAnim]);
-
-  const applyBackendScores = (newRaw: RankingRaw[]) => {
-    setRows((prev) => {
-      const prevRankMap: Record<string, number> = {};
-      prev.forEach((p) => {
-        prevRankMap[p.id] = p.rank;
-      });
-
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
-      return computeRanks(newRaw, prevRankMap);
-    });
-  };
-
-  // 1) sharedBlink 루프 + screen_view (한 번만)
+  // 메달 반짝임
   useEffect(() => {
     logRankingEvent('screen_view');
 
@@ -652,50 +481,60 @@ export function Ranking() {
     return () => loop.stop();
   }, [sharedBlink]);
 
-  useEffect(() => {
-    triggerBackgroundFlash();
-  }, [triggerBackgroundFlash]);
-
-  // 2) 안드로이드 LayoutAnimation enable
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      UIManager.setLayoutAnimationEnabledExperimental?.(true);
-    }
-  }, []);
-
-  // 3) 진입 직후 자리 재정렬 + 애니메이션
-  useEffect(() => {
-    const t = setTimeout(() => {
-      LayoutAnimation.configureNext(rankingSwapLayout);
-      setRows((prev) => [...prev].sort((a, b) => a.rank - b.rank));
-    }, 80);
-
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      // 테스트용: homeq 점수 +20000
-      const newRaw = rankingRaw.map((r) => {
-        if (r.id === 'homeq') return { ...r, score: r.score + 20000 };
-        return r;
+  // Firestore → rows 반영
+  const applyBackendScores = useCallback((newRaw: RankingRaw[]) => {
+    setRows((prev) => {
+      const prevRankMap: Record<string, number> = {};
+      prev.forEach((p) => {
+        prevRankMap[p.id] = p.rank;
       });
 
-      applyBackendScores(newRaw);
-    }, 5000);
-
-    return () => clearInterval(id);
+      return computeRanks(newRaw, prevRankMap);
+    });
   }, []);
 
-  // 4) 가족 totalPoints 일괄 조회 (디버그용)
+  // Firestore families 랭킹 실시간 구독
   useEffect(() => {
-    async function load() {
-      const list = await rankingService.getAllFamilyTotalPoints();
-      logRankingEvent('all_family_points', list);
-    }
+    console.log('[Ranking] subscribeFamiliesRanking start');
 
-    load();
-  }, []);
+    const unsubscribe = rankingService.subscribeFamiliesRanking((families) => {
+      const newRaw: RankingRaw[] = families.map((f) => ({
+        id: f.id,
+        familyName: f.familyName,
+        score: f.totalFamilyPoints,
+      }));
+
+      console.log('[Ranking] families from Firestore =', newRaw);
+
+      console.log(
+        '[Ranking] debug ranks from Firestore =',
+        families.map((f) => ({
+          id: f.id,
+          name: f.familyName,
+          point: f.totalFamilyPoints,
+          firestoreRank: f.rank,
+        })),
+      );
+
+      applyBackendScores(newRaw);
+    });
+
+    return () => {
+      console.log('[Ranking] unsubscribe ranking');
+      unsubscribe();
+    };
+  }, [applyBackendScores]);
+
+  console.log(
+    'rows in UI >>>',
+    rows.map((r) => ({
+      id: r.id,
+      name: r.familyName,
+      score: r.score,
+      rank: r.rank,
+      prevRank: r.prevRank,
+    })),
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -722,16 +561,15 @@ export function Ranking() {
             />
             <RandomBox onPress={() => setShowReward(true)} />
           </View>
+
           <View style={styles.top3Row}>
             {(() => {
-              // rows는 이미 score 기준으로 정렬+rank 계산된 상태
               const first = rows.find((r) => r.rank === 1);
               const second = rows.find((r) => r.rank === 2);
               const third = rows.find((r) => r.rank === 3);
 
               return (
                 <>
-                  {/* 2등(은) 왼쪽 */}
                   <View style={styles.secondPlaceWrapper}>
                     {second && (
                       <TopPlaceCard
@@ -754,7 +592,6 @@ export function Ranking() {
                     )}
                   </View>
 
-                  {/* 1등(금) 가운데 */}
                   <View style={styles.firstPlaceWrapper}>
                     {first && (
                       <TopPlaceCard
@@ -777,7 +614,6 @@ export function Ranking() {
                     )}
                   </View>
 
-                  {/* 3등(동) 오른쪽 */}
                   <View style={styles.thirdPlaceWrapper}>
                     {third && (
                       <TopPlaceCard
@@ -804,16 +640,13 @@ export function Ranking() {
             })()}
           </View>
 
-          <RankingAll
+          <RankingList
             rows={rows}
-            sharedAnim={sharedBlink}
-            flashAnim={flashAnim}
-            onRowPress={(row) => logRankingEvent('rank_row_press', row)}
+            onPressRow={(row) => logRankingEvent('rank_row_press', row)}
           />
         </View>
       </ScrollView>
 
-      {/* ? 눌렀을 때 뜨는 말풍선 */}
       {showTooltip && tooltipPos && (
         <View style={styles.tooltipBackdrop}>
           <View
@@ -1147,71 +980,6 @@ const styles = StyleSheet.create({
     height: 11,
     marginLeft: 4,
     resizeMode: 'contain',
-  },
-
-  /* 랭킹 전체 리스트 */
-  rankingAll: {
-    marginTop: 16,
-  },
-  rankRowBase: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 23,
-    marginBottom: 5,
-  },
-  rankRow: {
-    backgroundColor: '#FFFFFF',
-  },
-  rankRowUp: {
-    backgroundColor: 'rgba(255, 120, 120, 0.25)',
-    borderRadius: 8,
-  },
-  rankRowDown: {
-    backgroundColor: 'rgba(120, 140, 255, 0.25)',
-    borderRadius: 8,
-  },
-  rankRowLeft: {
-    width: 80,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rankRowCenter: {
-    flex: 1,
-  },
-  rankRowRight: {
-    width: 80,
-    alignItems: 'flex-end',
-  },
-  rankNumberText: {
-    fontSize: 15,
-    color: '#000000',
-    fontFamily: 'Roboto',
-    marginRight: 8,
-    fontWeight: '400',
-  },
-  rankChangeText: {
-    fontSize: 15,
-    color: '#000000',
-    fontFamily: 'Roboto',
-  },
-  rankChangeIcon: {
-    width: 11,
-    height: 11,
-    resizeMode: 'contain',
-  },
-  rankFamilyName: {
-    fontSize: 13,
-    color: '#000000',
-    fontFamily: 'Roboto',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  rankScoreText: {
-    fontSize: 12,
-    color: '#FF4D4F',
-    fontFamily: 'Roboto',
-    fontWeight: '500',
   },
 
   /* 툴팁 오버레이 */
