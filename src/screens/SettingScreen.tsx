@@ -1,20 +1,20 @@
 // src/screens/Setting.tsx
-import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  View,
-  Text,
+  Alert,
   Image,
-  TouchableOpacity,
-  StyleSheet,
+  Modal,
   SafeAreaView,
   ScrollView,
-  Alert,
-  Modal,
   Share,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import { useAuthStore } from '@/src/store/useAuthStore';

@@ -42,3 +42,4 @@ yarn-error.*
 
 # Firebase Admin SDK private key
 serviceAccountKey.json
+/scripts/update_jinjin.js
