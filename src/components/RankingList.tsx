@@ -16,17 +16,22 @@ export type RankingRow = {
   familyName: string;
   score: number;
   rank: number;
-  prevRank: number; // 순위 변화 표시용
+  prevRank: number; // 순위 변화 표시용 (지금은 부모에서 사용)
 };
 
 type Props = {
   rows: RankingRow[];
+  highlightedFamilies?: Record<string, 'up' | 'down'>; // ⬅ 추가
   onPressRow?: (row: RankingRow) => void;
 };
 
 const ROW_HEIGHT = 64; // 한 행 높이 대략값
 
-export function RankingList({ rows, onPressRow }: Props) {
+export function RankingList({
+  rows,
+  highlightedFamilies = {},
+  onPressRow,
+}: Props) {
   // id별 translateY 값 저장
   const animMap = useRef<Record<string, Animated.Value>>({}).current;
   // 이전 렌더에서의 순서
@@ -80,27 +85,23 @@ export function RankingList({ rows, onPressRow }: Props) {
   const renderItem = ({ item }: { item: RankingRow }) => {
     const translateY = animMap[item.id] ?? new Animated.Value(0);
 
-    // 여기서 바로 prevRank vs rank로 변화 계산
-    const change: 'none' | 'up' | 'down' =
-      item.prevRank > item.rank
-        ? 'up'
-        : item.prevRank < item.rank
-          ? 'down'
-          : 'none';
+    // ⬇⬇⬇ 핵심 변경 부분: 부모가 내려준 highlightedFamilies를 이용
+    const direction = highlightedFamilies[item.id]; // 'up' | 'down' | undefined
 
     const rowBgStyle =
-      change === 'up'
+      direction === 'up'
         ? styles.rankRowUp
-        : change === 'down'
+        : direction === 'down'
           ? styles.rankRowDown
           : styles.rankRow;
 
     const changeIcon =
-      change === 'up'
+      direction === 'up'
         ? require('../../assets/images/up.png')
-        : change === 'down'
+        : direction === 'down'
           ? require('../../assets/images/down.png')
           : null;
+    // ⬆⬆⬆ 여기까지
 
     return (
       <Animated.View

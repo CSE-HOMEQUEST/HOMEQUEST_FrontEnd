@@ -1,5 +1,6 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
+import { doc, updateDoc, increment } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -17,6 +18,7 @@ import {
   RankingList,
   RankingRow as RankingListRow,
 } from '../components/RankingList';
+import { db } from '../firebase/firebase';
 import { rankingService } from '../services/rankingService';
 
 /* ========== 공통 로깅 함수 ========== */
@@ -134,28 +136,32 @@ function RankingInfo({ onPressInfo }: RankingInfoProps) {
 
 type RandomBoxProps = {
   onPress: () => void;
+  // 0 ~ 1 사이의 진행도
+  progress: Animated.Value;
+  // 랭킹 상승 시 잠깐 보여줄 텍스트 (예: "+1")
+  gainText?: string | null;
+  gainAnim?: Animated.Value;
 };
 
-function RandomBox({ onPress }: RandomBoxProps) {
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 20000,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [progress]);
-
+function RandomBox({ onPress, progress, gainText, gainAnim }: RandomBoxProps) {
   const fillWidth = progress.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
+
+  const gainOpacity = gainAnim
+    ? gainAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 0],
+      })
+    : 0;
+
+  const gainTranslateY = gainAnim
+    ? gainAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -12],
+      })
+    : 0;
 
   return (
     <TouchableOpacity style={styles.randomBox} onPress={onPress}>
@@ -163,9 +169,24 @@ function RandomBox({ onPress }: RandomBoxProps) {
         source={require('../../assets/images/RandomBox.png')}
         style={styles.randomBoxImage}
       />
+
       <View style={styles.randomGauge}>
         <Animated.View style={[styles.randomGaugeFill, { width: fillWidth }]} />
       </View>
+
+      {gainText && gainAnim && (
+        <Animated.Text
+          style={[
+            styles.randomGainText,
+            {
+              opacity: gainOpacity,
+              transform: [{ translateY: gainTranslateY }],
+            },
+          ]}
+        >
+          {gainText}
+        </Animated.Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -452,10 +473,108 @@ export function Ranking() {
   const [showReward, setShowReward] = useState(false);
   const [rows, setRows] = useState<RankingListRow[]>([]);
 
+  const [highlightedFamilies, setHighlightedFamilies] = useState<
+    Record<string, 'up' | 'down'>
+  >({});
+
+  // 최근에 부스터가 점수 올린 가족들(id만 저장)
+  const boostedIdsRef = useRef<Record<string, boolean>>({});
+
+  const rowsRef = useRef<RankingRow[]>([]);
+
   const sharedBlink = useRef(new Animated.Value(0)).current;
 
-  const myFamilyId = 'fam_007';
+  const myFamilyId = 'fam_jinjin';
   const myRow = rows.find((r) => r.id === myFamilyId);
+
+  // 추가: 상자깡 게이지 진행도 (0 ~ 1)
+  const [boxProgress, setBoxProgress] = useState(0);
+  const boxProgressAnim = useRef(new Animated.Value(0)).current;
+
+  // 추가: 내 이전 랭킹 저장용
+  const prevMyRankRef = useRef<number | null>(null);
+
+  // 추가: +1 텍스트용 상태/애니메이션
+  const [gainText, setGainText] = useState<string | null>(null);
+  const gainAnim = useRef(new Animated.Value(0)).current;
+
+  // boxProgress 상태를 Animated.Value로 부드럽게 반영
+  useEffect(() => {
+    Animated.timing(boxProgressAnim, {
+      toValue: boxProgress,
+      duration: 400,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: false, // width 애니메이션이라 false
+    }).start();
+  }, [boxProgress, boxProgressAnim]);
+
+  const triggerRankGain = useCallback(
+    (diff: number) => {
+      if (diff <= 0) return;
+
+      const text = diff === 1 ? '+1' : `+${diff}`;
+      setGainText(text);
+
+      gainAnim.setValue(0);
+      Animated.timing(gainAnim, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        setGainText(null);
+      });
+    },
+    [gainAnim],
+  );
+
+  // rows 변경 시 내 랭킹 변화 감지 → 랭킹 오르면 게이지/텍스트 업데이트
+  useEffect(() => {
+    const currentMyRow = rows.find((r) => r.id === myFamilyId);
+    if (!currentMyRow) return;
+
+    const prevRank = prevMyRankRef.current;
+    const currentRank = currentMyRow.rank;
+
+    if (prevRank != null && currentRank < prevRank) {
+      // 랭킹이 올랐을 때 (예: 5위 → 4위)
+      const diff = prevRank - currentRank;
+
+      // 게이지 조금씩 차오르게 (랭킹 1칸 당 0.1씩 증가 예시)
+      setBoxProgress((prev) => {
+        const next = Math.min(prev + 0.4 * diff, 1);
+
+        // 게이지가 막 꽉 찬 순간
+        if (prev < 1 && next >= 1) {
+          console.log('[Ranking] 게이지 100% 도달 → 자동 상자깡!');
+          // 자동으로 보상 모달 열기
+          setShowReward(true);
+
+          if (prev < 1 && next >= 1) {
+            setShowReward(true);
+
+            // 게이지 자동 초기화
+            setTimeout(() => {
+              setBoxProgress(0);
+            }, 300); // 모달 표시 직후 약간 딜레이 주는 게 깔끔함
+          }
+        }
+
+        return next;
+      });
+
+      // +1 텍스트 애니메이션
+      triggerRankGain(diff);
+    }
+
+    // 현재 랭킹을 다음 비교를 위해 저장
+    prevMyRankRef.current = currentRank;
+  }, [rows, myFamilyId, triggerRankGain]);
+
+  // rows가 바뀔 때마다 ref에도 최신값 저장
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   // 메달 반짝임
   useEffect(() => {
@@ -481,49 +600,160 @@ export function Ranking() {
     return () => loop.stop();
   }, [sharedBlink]);
 
-  // Firestore → rows 반영
+  // Firestore → rows 반영 + 하이라이트 결정
   const applyBackendScores = useCallback((newRaw: RankingRaw[]) => {
-    setRows((prev) => {
-      const prevRankMap: Record<string, number> = {};
-      prev.forEach((p) => {
-        prevRankMap[p.id] = p.rank;
+    // 직전 렌더의 rows (rowsRef에서 가져옴)
+    const prevRows = rowsRef.current;
+
+    // 이전 rank 맵
+    const prevRankMap: Record<string, number> = {};
+    prevRows.forEach((p) => {
+      prevRankMap[p.id] = p.rank;
+    });
+
+    // 새 랭킹 계산
+    const next = computeRanks(newRaw, prevRankMap);
+
+    const highlights: Record<string, 'up' | 'down'> = {};
+
+    // 1) 부스터가 올린 가족들 먼저 처리
+    const boostedIds = Object.keys(boostedIdsRef.current);
+
+    if (boostedIds.length > 0) {
+      boostedIds.forEach((id) => {
+        const before = prevRankMap[id];
+        const row = next.find((r) => r.id === id);
+        if (!row || before == null) return;
+
+        const after = row.rank;
+        if (before === after) return;
+
+        highlights[id] = after < before ? 'up' : 'down';
       });
 
-      return computeRanks(newRaw, prevRankMap);
-    });
+      // 한 번 처리한 부스터 정보는 비우기
+      boostedIdsRef.current = {};
+    } else {
+      // 2) 부스터 정보가 없을 때: 기본 랭킹 변화 기반 하이라이트 (fallback)
+      next.forEach((row) => {
+        const before = prevRankMap[row.id] ?? row.rank;
+        const after = row.rank;
+
+        if (before === after) return;
+
+        const diff = before - after; // +면 위로, -면 아래로
+        // 이동 거리가 너무 크면 무시 (1~2칸만 하이라이트)
+        if (Math.abs(diff) <= 3) {
+          highlights[row.id] = diff > 0 ? 'up' : 'down';
+        }
+      });
+    }
+
+    // 확정된 하이라이트 적용
+    setHighlightedFamilies(highlights);
+    setRows(next);
   }, []);
 
-  // Firestore families 랭킹 실시간 구독
+  // Ranking 컴포넌트 안
+
+  const isInitialLoadRef = useRef(true); // 첫 스냅샷은 그냥 고정 화면용
+
   useEffect(() => {
-    console.log('[Ranking] subscribeFamiliesRanking start');
+    console.log('[Ranking] subscribeFamiliesRanking with reset start');
 
-    const unsubscribe = rankingService.subscribeFamiliesRanking((families) => {
-      const newRaw: RankingRaw[] = families.map((f) => ({
-        id: f.id,
-        familyName: f.familyName,
-        score: f.totalFamilyPoints,
-      }));
+    let unsubscribe: (() => void) | null = null;
 
-      console.log('[Ranking] families from Firestore =', newRaw);
+    // dev에서만 실행할 초기화 함수 (네가 올린 코드 그대로)
+    const resetFamilies = async () => {
+      const defaults: Record<string, number> = {
+        fam_002: 1000,
+        fam_003: 1120,
+        fam_004: 1230,
+        fam_005: 1350,
+        fam_006: 1470,
+        fam_007: 1690,
+        fam_008: 1810,
+        fam_009: 1940,
+        fam_010: 2000,
+        fam_jinjin: 1500,
+      };
 
-      console.log(
-        '[Ranking] debug ranks from Firestore =',
-        families.map((f) => ({
+      for (const [id, score] of Object.entries(defaults)) {
+        const ref = doc(db, 'families', id);
+        await updateDoc(ref, { totalFamilyPoints: score });
+      }
+    };
+
+    const init = async () => {
+      // 1) dev 모드면 먼저 초기화 끝내고
+      if (__DEV__) {
+        try {
+          console.log('[Ranking] resetFamilies start');
+          await resetFamilies();
+          console.log('[Ranking] resetFamilies done');
+        } catch (e) {
+          console.log('[Ranking] resetFamilies error', e);
+        }
+      }
+
+      // 2) 그 다음에 구독 시작
+      unsubscribe = rankingService.subscribeFamiliesRanking((families) => {
+        const newRaw: RankingRaw[] = families.map((f) => ({
           id: f.id,
-          name: f.familyName,
-          point: f.totalFamilyPoints,
-          firestoreRank: f.rank,
-        })),
-      );
+          familyName: f.familyName,
+          score: f.totalFamilyPoints,
+        }));
 
-      applyBackendScores(newRaw);
-    });
+        console.log('[Ranking] families from Firestore =', newRaw);
+
+        // 첫 스냅샷은 "그냥 정렬된 화면"만 보여주고, 애니메이션/랭킹변화 로직은 건너뛴다
+        if (isInitialLoadRef.current) {
+          const initialRows = computeRanks(newRaw); // prevRank 없이 깔끔 정렬
+          setRows(initialRows);
+          isInitialLoadRef.current = false;
+          return;
+        }
+
+        // 그 다음부터는 기존 로직대로 (prevRank 이용하는 애니메이션 포함)
+        applyBackendScores(newRaw);
+      });
+    };
+
+    init();
 
     return () => {
       console.log('[Ranking] unsubscribe ranking');
-      unsubscribe();
+      if (unsubscribe) unsubscribe();
     };
   }, [applyBackendScores]);
+
+  // 랜덤 가족 랭킹변화 로직
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    const intervalId = setInterval(async () => {
+      const list = rowsRef.current;
+      if (!list || list.length === 0) return;
+
+      const randomIndex = Math.floor(Math.random() * list.length);
+      const target = list[randomIndex];
+      if (!target?.id) return;
+
+      // 부스터가 올린 가족 id 기록
+      boostedIdsRef.current[target.id] = true;
+
+      try {
+        const familyRef = doc(db, 'families', target.id);
+        await updateDoc(familyRef, {
+          totalFamilyPoints: increment(200), // 1초짜리면 200
+        });
+      } catch (e) {
+        console.log('[DevBoost] fast booster error', e);
+      }
+    }, 600);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   console.log(
     'rows in UI >>>',
@@ -535,6 +765,44 @@ export function Ranking() {
       prevRank: r.prevRank,
     })),
   );
+  // 랭킹변화 로직
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    console.log('[DevBoost] start fast booster (1.5s)');
+
+    const intervalId = setInterval(async () => {
+      const list = rowsRef.current;
+      if (!list || list.length === 0) return;
+
+      const randomIndex = Math.floor(Math.random() * list.length);
+      const target = list[randomIndex];
+      if (!target?.id) return;
+
+      // 부스터가 올린 가족 id 기록
+      boostedIdsRef.current[target.id] = true;
+
+      try {
+        const familyRef = doc(db, 'families', target.id);
+        await updateDoc(familyRef, {
+          totalFamilyPoints: increment(100),
+        });
+
+        console.log(
+          '[DevBoost] [FAST] +100 to',
+          target.familyName,
+          `(id: ${target.id})`,
+        );
+      } catch (e) {
+        console.log('[DevBoost] fast booster error', e);
+      }
+    }, 600); // 1.5초
+
+    return () => {
+      clearInterval(intervalId);
+      console.log('[DevBoost] stop fast booster');
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -559,7 +827,12 @@ export function Ranking() {
                 setShowTooltip(true);
               }}
             />
-            <RandomBox onPress={() => setShowReward(true)} />
+            <RandomBox
+              onPress={() => setShowReward(true)}
+              progress={boxProgressAnim}
+              gainText={gainText}
+              gainAnim={gainAnim}
+            />
           </View>
 
           <View style={styles.top3Row}>
@@ -642,6 +915,7 @@ export function Ranking() {
 
           <RankingList
             rows={rows}
+            highlightedFamilies={highlightedFamilies}
             onPressRow={(row) => logRankingEvent('rank_row_press', row)}
           />
         </View>
@@ -813,8 +1087,8 @@ const styles = StyleSheet.create({
   myRankingNumber: {
     fontSize: 20,
     fontFamily: 'Roboto',
-    fontWeight: '400',
-    color: '#000000',
+    fontWeight: '500',
+    color: '#FF4D4D',
   },
 
   /* 랭킹 정보 (기간 / 지역) */
@@ -882,6 +1156,15 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     marginBottom: 10,
+  },
+
+  randomGainText: {
+    position: 'absolute',
+    bottom: 6, // 게이지 바로 위 정도
+    right: 18,
+    fontSize: 11,
+    color: '#9B9B9B',
+    fontWeight: '500',
   },
 
   /* 상위 3등 카드 */
