@@ -1,5 +1,6 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -16,6 +17,7 @@ import {
   View,
 } from 'react-native';
 
+import { db } from '../firebase/firebase';
 import { rankingService } from '../services/rankingService';
 
 const rankingSwapLayout = {
@@ -695,6 +697,36 @@ export function Ranking() {
     }
 
     load();
+  }, []);
+
+  // 5) 업데이트 반영 확인 (디버그용)
+  useEffect(() => {
+    console.log('[Ranking] direct onSnapshot test start');
+
+    const familiesRef = collection(db, 'families');
+    const q = query(familiesRef, orderBy('totalFamilyPoints', 'desc'));
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        console.log(
+          '[Ranking] direct snapshot:',
+          snapshot.docs.map((d, i) => ({
+            id: d.id,
+            rank: i + 1,
+            ...d.data(),
+          })),
+        );
+      },
+      (error) => {
+        console.log('[Ranking] direct onSnapshot error', error);
+      },
+    );
+
+    return () => {
+      console.log('[Ranking] direct onSnapshot unsubscribe');
+      unsub();
+    };
   }, []);
 
   return (
