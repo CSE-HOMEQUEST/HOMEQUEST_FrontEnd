@@ -13,7 +13,10 @@ import {
   View,
 } from 'react-native';
 
-import type { Filter } from '@/src/store/useChallengeStore';
+import type {
+  Challenge as ChallengeItem,
+  Filter,
+} from '@/src/store/useChallengeStore';
 import { useChallengeStore } from '@/src/store/useChallengeStore';
 
 type Audience = '나' | '가족';
@@ -217,9 +220,7 @@ function ChallengeCardv2({
   );
 }
 
-function ChallengeProgressSection() {
-  const { ongoing } = useChallengeStore();
-
+function ChallengeProgressSection({ items }: { items: ChallengeItem[] }) {
   return (
     <View style={styles.challengeProgressSection}>
       <Text style={[styles.sectionTitle, styles.progressSectionTitle]}>
@@ -231,16 +232,16 @@ function ChallengeProgressSection() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.challengeCardList}
       >
-        {ongoing.length === 0 ? (
+        {items.length === 0 ? (
           <Text style={{ color: '#999', marginLeft: 20 }}>
             진행중인 챌린지가 없어요.
           </Text>
         ) : (
-          ongoing.map((c) => (
+          items.map((c) => (
             <ChallengeCardv2
               key={c.id}
               category={c.category}
-              type="데일리" // 임시 고정, 수정 필요
+              type="데일리" // TODO: durationType 들어오면 교체
               title={c.title}
               badgeText={`${c.rewardPoints ?? 0}p`}
               progressRatio={(c.progressPct ?? 0) / 100}
@@ -254,14 +255,18 @@ function ChallengeProgressSection() {
 }
 
 function RecommendedChallengeSection({
+  items,
   onPressStart,
   onIndexChange,
+  onDismiss,
+  onRefresh,
 }: {
+  items: ChallengeItem[];
   onPressStart: (id: string) => void;
   onIndexChange: (index: number) => void;
+  onDismiss: (id: string) => void;
+  onRefresh: () => void;
 }) {
-  const { recommended, dismissRecommendation, hydrate } = useChallengeStore();
-
   const handleMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const width = e.nativeEvent.layoutMeasurement.width || 1;
     const offset = e.nativeEvent.contentOffset.x;
@@ -269,7 +274,7 @@ function RecommendedChallengeSection({
     onIndexChange(index);
   };
 
-  if (recommended.length === 0) {
+  if (items.length === 0) {
     return (
       <View style={{ marginTop: 40, marginBottom: 20 }}>
         <Text style={{ color: '#999', textAlign: 'center' }}>
@@ -283,13 +288,13 @@ function RecommendedChallengeSection({
     <View style={styles.recommendedChallengeSection}>
       <View style={styles.recommendedHeader}>
         <Text style={styles.recommendTitle}>추천 챌린지</Text>
-        <TouchableOpacity onPress={hydrate}>
+        <TouchableOpacity onPress={onRefresh}>
           <Text style={styles.refreshIcon}>↻</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={recommended}
+        data={items}
         horizontal
         pagingEnabled
         keyExtractor={(item) => item.id}
@@ -303,7 +308,7 @@ function RecommendedChallengeSection({
               style={styles.deleteButton}
               onPress={() => {
                 console.log('❌ dismiss:', item.id);
-                dismissRecommendation(item.id);
+                onDismiss(item.id);
               }}
             >
               <Image
@@ -315,7 +320,9 @@ function RecommendedChallengeSection({
             <View style={styles.recommendedMetaRow}>
               <Text style={styles.challengeMetaText}>{item.category}</Text>
               <View style={styles.metaDivider} />
-              <Text style={styles.challengeMetaText}>개인</Text>
+              <Text style={styles.challengeMetaText}>
+                {item.category === '가족' ? '가족' : '개인'}
+              </Text>
               <Image
                 source={require('../../assets/images/tdesign_time-filled.png')}
                 style={styles.metaIcon}
@@ -353,13 +360,18 @@ function RecommendedChallengeSection({
   );
 }
 
-function PageIndicatorDots({ activeIndex }: { activeIndex: number }) {
-  const { recommended } = useChallengeStore();
-  if (recommended.length <= 1) return null;
+function PageIndicatorDots({
+  activeIndex,
+  total,
+}: {
+  activeIndex: number;
+  total: number;
+}) {
+  if (total <= 1) return null;
 
   return (
     <View style={styles.pageIndicatorDots}>
-      {recommended.map((_, idx) => (
+      {Array.from({ length: total }).map((_, idx) => (
         <View
           key={idx}
           style={[
@@ -427,9 +439,17 @@ function BottomTabBar() {
 // 메인 페이지
 export function Challenge() {
   const [activeRecIndex, setActiveRecIndex] = useState(0);
+  const [audience, setAudience] = useState<Audience>('나');
 
-  const { currentFilter, setFilter, hydrate, startChallenge } =
-    useChallengeStore();
+  const {
+    currentFilter,
+    setFilter,
+    hydrate,
+    startChallenge,
+    ongoing,
+    recommended,
+    dismissRecommendation,
+  } = useChallengeStore();
 
   useEffect(() => {
     hydrate();
@@ -440,6 +460,12 @@ export function Challenge() {
     setFilter(filter);
     hydrate();
   };
+
+  // 🔹 '나' / '가족'에 맞게 필터링된 리스트
+  const filteredOngoing = ongoing.filter((c) => c.category === audience);
+  const filteredRecommended = recommended.filter(
+    (c) => c.category === audience,
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -452,25 +478,32 @@ export function Challenge() {
 
         <View style={styles.main}>
           <CategoryFilterGroup
-            audience="나"
+            audience={audience}
             category={currentFilter}
             onAudienceChange={(v) => {
               console.log('📌 onAudienceChange:', v);
+              setAudience(v);
             }}
             onCategoryChange={onCategoryChange}
           />
 
           <MyChallengeSection />
 
-          <ChallengeProgressSection />
+          <ChallengeProgressSection items={filteredOngoing} />
 
           <RecommendedChallengeSection
+            items={filteredRecommended}
             onPressStart={startChallenge}
             onIndexChange={setActiveRecIndex}
+            onDismiss={dismissRecommendation}
+            onRefresh={hydrate}
           />
         </View>
       </ScrollView>
-      <PageIndicatorDots activeIndex={activeRecIndex} />
+      <PageIndicatorDots
+        activeIndex={activeRecIndex}
+        total={filteredRecommended.length}
+      />
       <BottomTabBar />
     </SafeAreaView>
   );

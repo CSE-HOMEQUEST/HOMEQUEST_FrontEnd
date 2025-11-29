@@ -1,17 +1,21 @@
 // src/store/useChallengeStore.tsx
 import { create } from 'zustand';
 
-import { useRewardStore } from '../store/useRewardStore';
-
 import { challengeService } from '@/src/services/challengeService';
+import { useRewardStore } from '@/src/store/useRewardStore';
 
 /** 공통 타입 */
 export type Filter = '전체' | '절약' | '가사' | '헬스' | '나' | '가족';
 
 export type Challenge = {
+  // 🔹 challengeId (템플릿/진행 공통 ID)
   id: string;
+
+  // 🔹 진행 문서 id (Firestore progress 문서 id)
+  progressId?: string;
+
   title: string;
-  category: Filter; // ← 여기로 개인/가족 구분
+  category: Filter; // '나' | '가족' 등으로 사용
   status: 'ongoing' | 'recommended' | 'completed' | 'failed';
   progressPct?: number;
   rewardPoints?: number;
@@ -70,19 +74,48 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       console.log('🔥 hydrate | recommendedRaw:', recPage.items);
 
       // 2) 우리 앱 Challenge 타입으로 변환
-      const ongoing: Challenge[] = ongoingRaw.map((d: any) => ({
-        id: d.challengeId,
-        title: d.title,
-        category: d.category, // '나' | '가족'
-        status: 'ongoing',
-        progressPct: d.progressPct ?? 0,
-        rewardPoints: d.rewardPoints ?? 0,
-      }));
+      const ongoing: Challenge[] = ongoingRaw.map((d: any) => {
+        const isPersonal = d.mode === 'personal';
 
-      const recommended: Challenge[] = recPage.items.map((dto) => ({
+        // title: 기존 user-challenge 구조(title) + 새 progress 구조(challengeTitle) 둘 다 대응
+        const title: string = d.title ?? d.challengeTitle ?? '';
+
+        // category: 기존엔 '나' | '가족' 으로 저장.
+        // 새 구조에선 mode만 있을 수 있으니 fallback 처리
+        const category: Filter =
+          d.category ?? (isPersonal ? ('나' as Filter) : ('가족' as Filter));
+
+        // 진행률: progressPct 필드 있으면 그거, 없으면 current/target으로 계산
+        const progressPct: number =
+          typeof d.progressPct === 'number'
+            ? d.progressPct
+            : d.targetValue
+              ? Math.min(
+                  Math.floor(((d.currentValue ?? 0) / d.targetValue) * 100),
+                  100,
+                )
+              : 0;
+
+        // 리워드 포인트: 기존 rewardPoints 또는 totalPersonalPoints/totalFamilyPoints 활용
+        const rewardPoints: number =
+          d.rewardPoints ?? d.totalPersonalPoints ?? d.totalFamilyPoints ?? 0;
+
+        return {
+          id: d.challengeId,
+          progressId: d.progressId, // challengeService에서 추가한 progress 문서 id
+          title,
+          category,
+          status: 'ongoing',
+          progressPct,
+          rewardPoints,
+        };
+      });
+
+      const recommended: Challenge[] = recPage.items.map((dto: any) => ({
         id: dto.id,
         title: dto.title,
-        category: dto.mode === 'personal' ? '나' : '가족',
+        category:
+          dto.mode === 'personal' ? ('나' as Filter) : ('가족' as Filter),
         status: 'recommended',
         rewardPoints:
           dto.mode === 'personal'
@@ -121,10 +154,11 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         cursor: cur,
       });
 
-      const more: Challenge[] = page.items.map((dto) => ({
+      const more: Challenge[] = page.items.map((dto: any) => ({
         id: dto.id,
         title: dto.title,
-        category: dto.mode === 'personal' ? '나' : '가족',
+        category:
+          dto.mode === 'personal' ? ('나' as Filter) : ('가족' as Filter),
         status: 'recommended',
         rewardPoints:
           dto.mode === 'personal'
@@ -173,7 +207,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   },
 
   /* -----------------------------
-      진행률 업데이트
+      진행률 업데이트 (프론트 상태만)
   ----------------------------- */
   updateProgress: (id, pct) =>
     set((s) => ({
@@ -184,7 +218,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
 
   /* -----------------------------
       챌린지 완료 처리
-      (여기서 개인/가족 리워드 & 타임라인 분리됨)
   ----------------------------- */
   completeChallenge: async (id) => {
     const res = await challengeService.completeChallenge(id);
@@ -194,7 +227,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     const rewardStore = useRewardStore.getState();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-    // 개인 챌린지의 경우
     if (category === '나') {
       rewardStore.setMyReward({
         currentPoint: rewardStore.myPoint + rewardPoints,
@@ -209,8 +241,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         point: rewardPoints,
         type: 'earn',
       });
-
-      // 가족 챌린지의 경우
     } else if (category === '가족') {
       rewardStore.setFamilyReward({
         total: rewardStore.familyTotal + rewardPoints,
@@ -226,7 +256,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
     }
 
-    // ongoing 목록에서 제거
     set((s) => ({
       ongoing: s.ongoing.filter((c) => c.id !== id),
     }));
@@ -236,7 +265,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       추천 제거(dismiss)
   ----------------------------- */
   dismissRecommendation: async (id) => {
-    // 필요하면 service에 dismiss API 추가
     set((s) => ({
       recommended: s.recommended.filter((c) => c.id !== id),
     }));

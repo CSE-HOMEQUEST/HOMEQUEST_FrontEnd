@@ -19,6 +19,7 @@ import {
 import { auth, db } from '@/src/firebase/firebase';
 import type { Filter } from '@/src/store/useChallengeStore';
 
+// 챌린지 템플릿 DTO
 export type ChallengeDto = {
   id: string;
   title: string;
@@ -29,10 +30,36 @@ export type ChallengeDto = {
   createdAt?: string;
 };
 
+// progress 문서 타입 (네가 말한 ChallengeProgressDto)
+export type ChallengeProgressDoc = {
+  progressId: string; // 문서 id
+  challengeId: string;
+  challengeTitle?: string;
+  title?: string;
+  challengeCategory?: string;
+  mode?: 'personal' | 'family';
+
+  status?: 'ONGOING' | 'COMPLETED' | 'FAILED';
+
+  currentValue?: number;
+  targetValue?: number;
+  progressPct?: number;
+
+  totalEnergyKwh?: number;
+  totalPersonalPoints?: number;
+  totalFamilyPoints?: number;
+
+  // 필요하면 나머지 필드도
+  deviceType?: string;
+  durationType?: string;
+  progressType?: string;
+  recommendedTimeSlot?: string;
+};
+
 const mapDocToDto = (
   snap: QueryDocumentSnapshot<unknown, DocumentData>,
 ): ChallengeDto => {
-  const d = snap.data() as DocumentData; // or as any
+  const d = snap.data() as DocumentData;
 
   return {
     id: snap.id,
@@ -64,12 +91,18 @@ export const challengeService = {
     const user = auth.currentUser;
     if (!user) return [];
 
-    const colRef = collection(db, 'users', user.uid, 'challenges');
-    const q = query(colRef, where('status', '==', 'ongoing'));
+    const colRef = collection(db, 'users', user.uid, 'challengeProgress');
+
+    // status == 'ONGOING' 인 것만
+    const q = query(colRef, where('status', '==', 'ONGOING'));
     const snap = await getDocs(q);
 
-    return snap.docs.map((d) => d.data());
-    // 여기서는 raw 데이터로 내보내고, store에서 앱 타입으로 변환해도 됨
+    // progress 문서 id도 같이 넘겨줌 (progressId)
+    return snap.docs.map((d) => ({
+      progressId: d.id,
+      ...(d.data() as any),
+    })) as ChallengeProgressDoc[];
+    // 여기서는 raw 데이터로 내보내고, store에서 앱 타입으로 변환
   },
 
   /** 추천 챌린지: /challenges 템플릿에서 읽기 */
@@ -104,7 +137,7 @@ export const challengeService = {
     const tmplSnap = await getDoc(tmplRef);
     if (!tmplSnap.exists()) throw new Error('챌린지 템플릿 없음');
 
-    const d = tmplSnap.data();
+    const d = tmplSnap.data() as any;
     const isPersonal = d.mode === 'personal';
 
     const userCol = collection(db, 'users', user.uid, 'challenges');
@@ -115,7 +148,9 @@ export const challengeService = {
       rewardPoints: isPersonal
         ? (d.basePersonalPoints ?? 0)
         : (d.baseFamilyPoints ?? 0),
-      status: 'ongoing',
+
+      status: 'ONGOING',
+
       progressPct: 0,
       startedAt: serverTimestamp(),
     });
@@ -130,21 +165,21 @@ export const challengeService = {
     const q = query(
       colRef,
       where('challengeId', '==', challengeId),
-      where('status', '==', 'ongoing'),
+      where('status', '==', 'ONGOING'),
     );
     const snap = await getDocs(q);
     if (snap.empty)
       return {
         rewardPoints: 0,
         category: '나',
-        title: '', // title 항상 string
+        title: '',
       };
 
     const docSnap = snap.docs[0];
-    const data = docSnap.data();
+    const data = docSnap.data() as any;
 
     await updateDoc(docSnap.ref, {
-      status: 'completed',
+      status: 'COMPLETED',
       completedAt: serverTimestamp(),
       progressPct: 100,
     });
