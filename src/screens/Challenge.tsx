@@ -16,6 +16,8 @@ import {
 
 import ChallengeDetail from '@/src/components/ChallengeDetail';
 import { auth } from '@/src/firebase/firebase';
+import { challengeService } from '@/src/services/challengeService';
+import { useAuthStore } from '@/src/store/useAuthStore';
 import type {
   Challenge as ChallengeItem,
   Filter,
@@ -135,28 +137,48 @@ function CategoryFilterGroup({
   );
 }
 
-function MyChallengeSection() {
+function MyChallengeSection({
+  audience,
+  mySummary,
+  familySummary,
+}: {
+  audience: Audience;
+  mySummary: {
+    totalParticipated: number;
+    totalCompleted: number;
+    successRate: number;
+  };
+  familySummary: {
+    totalParticipated: number;
+    totalCompleted: number;
+    successRate: number;
+  };
+}) {
+  const isMe = audience === '나';
+  const data = isMe ? mySummary : familySummary;
+  const titleText = isMe ? '나의 챌린지 현황' : '우리 가족 챌린지 현황';
+
   return (
     <View style={styles.myChallengeSection}>
-      <Text style={styles.sectionTitle}>나의 챌린지 현황</Text>
+      <Text style={styles.sectionTitle}>{titleText}</Text>
 
       <View style={styles.missionStatsCard}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>50</Text>
+          <Text style={styles.statNumber}>{data.totalParticipated}</Text>
           <Text style={styles.statLabel}>참여한 미션</Text>
         </View>
 
         <View style={styles.verticalDivider} />
 
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>34</Text>
+          <Text style={styles.statNumber}>{data.totalCompleted}</Text>
           <Text style={styles.statLabel}>성공한 미션</Text>
         </View>
 
         <View style={styles.verticalDivider} />
 
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>68%</Text>
+          <Text style={styles.statNumber}>{data.successRate}%</Text>
           <Text style={styles.statLabel}>미션 성공률</Text>
         </View>
       </View>
@@ -451,6 +473,21 @@ export function Challenge() {
   const [activeRecIndex, setActiveRecIndex] = useState(0);
   const [audience, setAudience] = useState<Audience>('나');
 
+  const [summary, setSummary] = useState({
+    me: {
+      totalParticipated: 0,
+      totalCompleted: 0,
+      successRate: 0,
+    },
+    family: {
+      totalParticipated: 0,
+      totalCompleted: 0,
+      successRate: 0,
+    },
+  });
+
+  const { user: appUser } = useAuthStore(); // familyId 용
+
   const {
     currentFilter,
     setFilter,
@@ -495,6 +532,39 @@ export function Challenge() {
     hydrate();
   };
 
+  // 나 & 우리 가족 챌린지 요약 통계 로드
+  useEffect(() => {
+    const fbUser = auth.currentUser;
+    const familyId = appUser?.familyId;
+
+    if (!fbUser) {
+      console.log('[Challenge] no auth.currentUser, skip summary');
+      return;
+    }
+
+    (async () => {
+      try {
+        const me = await challengeService.getMySummary(fbUser.uid);
+
+        let family = {
+          totalParticipated: 0,
+          totalCompleted: 0,
+          successRate: 0,
+        };
+
+        if (familyId) {
+          family = await challengeService.getFamilySummary(familyId);
+        } else {
+          console.log('[Challenge] no familyId, skip family summary');
+        }
+
+        setSummary({ me, family });
+      } catch (e) {
+        console.log('[Challenge] get summary ERROR:', e);
+      }
+    })();
+  }, [appUser?.familyId]);
+
   // 1) 진행중: audience + currentFilter 둘 다 적용
   const filteredOngoing = ongoing.filter((c) => {
     // 나/가족
@@ -534,7 +604,11 @@ export function Challenge() {
             onCategoryChange={onCategoryChange}
           />
 
-          <MyChallengeSection />
+          <MyChallengeSection
+            audience={audience}
+            mySummary={summary.me}
+            familySummary={summary.family}
+          />
 
           <ChallengeProgressSection
             items={filteredOngoing}

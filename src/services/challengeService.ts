@@ -207,4 +207,86 @@ export const challengeService = {
       title: data.title as string,
     };
   },
+
+  /** 나의 챌린지 요약 지표 */
+  async getMySummary(uid: string) {
+    const colRef = collection(db, 'users', uid, 'challengeProgress');
+    const snap = await getDocs(colRef);
+
+    let totalParticipated = 0;
+    let totalCompleted = 0;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const status = (data.status as string) ?? 'ONGOING';
+
+      // 참여한 미션: ONGOING / COMPLETED / FAILED / EXPIRED
+      if (
+        status === 'ONGOING' ||
+        status === 'COMPLETED' ||
+        status === 'FAILED'
+      ) {
+        totalParticipated += 1;
+      }
+
+      // 성공한 미션: COMPLETED
+      if (status === 'COMPLETED') {
+        totalCompleted += 1;
+      }
+    });
+
+    const successRate =
+      totalParticipated > 0
+        ? Math.round((totalCompleted / totalParticipated) * 100)
+        : 0;
+
+    console.log('[challengeService.getMySummary]', {
+      totalParticipated,
+      totalCompleted,
+      successRate,
+    });
+
+    return { totalParticipated, totalCompleted, successRate };
+  },
+
+  /** 우리 가족 챌린지 요약 지표 */
+  async getFamilySummary(familyId: string) {
+    const colRef = collection(db, 'families', familyId, 'challengeProgress');
+    const snap = await getDocs(colRef);
+
+    let totalParticipated = 0;
+    let totalCompleted = 0;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const status = (data.status as string) ?? 'ONGOING';
+
+      // 참여한 미션: ONGOING / COMPLETED / FAILED
+      if (
+        status === 'ONGOING' ||
+        status === 'COMPLETED' ||
+        status === 'FAILED'
+      ) {
+        totalParticipated += 1;
+      }
+
+      // 성공한 미션: COMPLETED
+      if (status === 'COMPLETED') {
+        totalCompleted += 1;
+      }
+    });
+
+    const successRate =
+      totalParticipated > 0
+        ? Math.round((totalCompleted / totalParticipated) * 100)
+        : 0;
+
+    console.log('[challengeService.getFamilySummary]', {
+      totalParticipated,
+      totalCompleted,
+      successRate,
+    });
+
+    return { totalParticipated, totalCompleted, successRate };
+  },
 };
