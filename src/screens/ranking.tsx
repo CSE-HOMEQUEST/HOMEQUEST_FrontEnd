@@ -542,7 +542,7 @@ export function Ranking() {
 
       // 게이지 조금씩 차오르게 (랭킹 1칸 당 0.1씩 증가 예시)
       setBoxProgress((prev) => {
-        const next = Math.min(prev + 0.4 * diff, 1);
+        const next = Math.min(prev + 0.3 * diff, 1);
 
         // 게이지가 막 꽉 찬 순간
         if (prev < 1 && next >= 1) {
@@ -675,7 +675,7 @@ export function Ranking() {
         fam_008: 1810,
         fam_009: 1940,
         fam_010: 2000,
-        fam_jinjin: 1500,
+        fam_jinjin: 900,
       };
 
       for (const [id, score] of Object.entries(defaults)) {
@@ -750,7 +750,7 @@ export function Ranking() {
       } catch (e) {
         console.log('[DevBoost] fast booster error', e);
       }
-    }, 600);
+    }, 700);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -796,7 +796,7 @@ export function Ranking() {
       } catch (e) {
         console.log('[DevBoost] fast booster error', e);
       }
-    }, 600); // 1.5초
+    }, 700); // 1.5초
 
     return () => {
       clearInterval(intervalId);
