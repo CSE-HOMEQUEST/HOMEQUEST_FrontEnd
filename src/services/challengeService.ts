@@ -89,9 +89,22 @@ export const challengeService = {
   /** 진행중인 챌린지: /users/{uid}/challenges 에서 읽기 */
   async getOngoing() {
     const user = auth.currentUser;
-    if (!user) return [];
+    console.log(
+      '[getOngoing] auth.currentUser =',
+      user ? { uid: user.uid, email: user.email } : null,
+    );
 
-    const colRef = collection(db, 'users', user.uid, 'challengeProgress');
+    // 🔧 디버깅용: auth가 null이어도 jinjin uid를 강제로 써서 테스트
+    const targetUid = user?.uid ?? '41LV8xJyJNaaGKi1cFWtrsV8GKi2';
+
+    const colRef = collection(db, 'users', targetUid, 'challengeProgress');
+
+    // where 없이 전체 먼저 보기
+    const allSnap = await getDocs(colRef);
+    console.log('[getOngoing] ALL challengeProgress docs =', allSnap.size);
+    allSnap.docs.forEach((d) => {
+      console.log('[getOngoing] - doc', d.id, d.data());
+    });
 
     // status == 'ONGOING' 인 것만
     const q = query(colRef, where('status', '==', 'ONGOING'));

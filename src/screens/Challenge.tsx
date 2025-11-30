@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { auth } from '@/src/firebase/firebase';
 import type {
   Challenge as ChallengeItem,
   Filter,
@@ -451,9 +452,33 @@ export function Challenge() {
     dismissRecommendation,
   } = useChallengeStore();
 
+  // 디버그: 현재 로그인한 사용자 정보 출력
   useEffect(() => {
+    const user = auth.currentUser;
+
+    if (user) {
+      console.log('[Challenge] auth.currentUser =', {
+        uid: user.uid,
+        email: user.email,
+      });
+    } else {
+      console.log('[Challenge] auth.currentUser is NULL');
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('[Challenge] useEffect -> call hydrate()');
     hydrate();
   }, [hydrate]);
+
+  // 디버그: 스토어 상태 출력
+  useEffect(() => {
+    console.log('🟢 [Challenge] store snapshot');
+    console.log('ongoing length =', ongoing.length);
+    // console.log('ongoing =', ongoing);
+    console.log('recommended length =', recommended.length);
+    // console.log('recommended =', recommended);
+  }, [ongoing, recommended]);
 
   const onCategoryChange = (filter: Filter) => {
     console.log('📌 onCategoryChange:', filter);

@@ -64,6 +64,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   hydrate: async () => {
     set((s) => ({ loading: { ...s.loading, init: true }, error: null }));
     try {
+      console.log('[store.hydrate] START');
+
       // 1) Firestore에서 읽기
       const ongoingRaw = await challengeService.getOngoing();
       const recPage = await challengeService.getRecommended({
@@ -133,6 +135,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         loading: { ...s.loading, init: false },
       }));
     } catch (e: any) {
+      console.log('[store.hydrate] ERROR:', e);
       set((s) => ({
         error: e?.message ?? '네트워크 오류',
         loading: { ...s.loading, init: false },
