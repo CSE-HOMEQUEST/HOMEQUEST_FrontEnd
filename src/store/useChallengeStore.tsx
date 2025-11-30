@@ -1,7 +1,9 @@
 // src/store/useChallengeStore.tsx
 import { create } from 'zustand';
 
+import { auth } from '@/src/firebase/firebase';
 import { challengeService } from '@/src/services/challengeService';
+import { useAuthStore } from '@/src/store/useAuthStore';
 import { useRewardStore } from '@/src/store/useRewardStore';
 
 /** 공통 타입 */
@@ -66,8 +68,26 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     try {
       console.log('[store.hydrate] START');
 
+      // !! getAllOngoing으로 다 받아오고 -> 나/가족으로 필터링
+      // 0) authStore에서 uid / familyId 가져오기 + Firebase auth fallback
+      const { user, token } = useAuthStore.getState();
+      const fbUser = auth.currentUser;
+      const uid = token ?? fbUser?.uid ?? null;
+      const familyId = user?.familyId ?? null;
+
+      console.log('[store.hydrate] uid =', uid, 'familyId =', familyId);
+
+      if (!uid) {
+        console.log('[store.hydrate] no uid, skip getAllOngoing');
+        set((s) => ({ ...s, loading: { ...s.loading, init: false } }));
+        return;
+      }
+
       // 1) Firestore에서 읽기
-      const ongoingRaw = await challengeService.getOngoing();
+      const ongoingRaw = await challengeService.getAllOngoing({
+        uid,
+        familyId,
+      });
       const recPage = await challengeService.getRecommended({
         filter: get().currentFilter,
       });
@@ -82,10 +102,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         // title: 기존 user-challenge 구조(title) + 새 progress 구조(challengeTitle) 둘 다 대응
         const title: string = d.title ?? d.challengeTitle ?? '';
 
-        // category: 기존엔 '나' | '가족' 으로 저장.
-        // 새 구조에선 mode만 있을 수 있으니 fallback 처리
-        const category: Filter =
-          d.category ?? (isPersonal ? ('나' as Filter) : ('가족' as Filter));
+        // audience 용 카테고리는 '나' or '가족'으로 강제
+        const category: Filter = isPersonal ? '나' : '가족';
 
         // 진행률: progressPct 필드 있으면 그거, 없으면 current/target으로 계산
         const progressPct: number =

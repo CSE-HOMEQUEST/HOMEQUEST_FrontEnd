@@ -86,36 +86,56 @@ const mapFilterToFsCategory = (filter: Filter): string | null => {
 };
 
 export const challengeService = {
-  /** 진행중인 챌린지: /users/{uid}/challenges 에서 읽기 */
-  async getOngoing() {
-    const user = auth.currentUser;
-    console.log(
-      '[getOngoing] auth.currentUser =',
-      user ? { uid: user.uid, email: user.email } : null,
-    );
-
-    // 🔧 디버깅용: auth가 null이어도 jinjin uid를 강제로 써서 테스트
-    const targetUid = user?.uid ?? '41LV8xJyJNaaGKi1cFWtrsV8GKi2';
-
-    const colRef = collection(db, 'users', targetUid, 'challengeProgress');
-
-    // where 없이 전체 먼저 보기
-    const allSnap = await getDocs(colRef);
-    console.log('[getOngoing] ALL challengeProgress docs =', allSnap.size);
-    allSnap.docs.forEach((d) => {
-      console.log('[getOngoing] - doc', d.id, d.data());
-    });
-
-    // status == 'ONGOING' 인 것만
+  // 1) getPersonalOngoing: 개인 진행중
+  async getPersonalOngoing(uid: string) {
+    const colRef = collection(db, 'users', uid, 'challengeProgress');
     const q = query(colRef, where('status', '==', 'ONGOING'));
     const snap = await getDocs(q);
 
-    // progress 문서 id도 같이 넘겨줌 (progressId)
+    console.log(
+      '[getPersonalOngoing] ONGOING docs =',
+      snap.size,
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    );
+
     return snap.docs.map((d) => ({
       progressId: d.id,
       ...(d.data() as any),
-    })) as ChallengeProgressDoc[];
-    // 여기서는 raw 데이터로 내보내고, store에서 앱 타입으로 변환
+      mode: 'personal' as const,
+    }));
+  },
+
+  // 2) getFamilyOngoing: 가족 진행중
+  async getFamilyOngoing(familyId: string) {
+    const colRef = collection(db, 'families', familyId, 'challengeProgress');
+    const q = query(colRef, where('status', '==', 'ONGOING'));
+    const snap = await getDocs(q);
+
+    console.log(
+      '[getFamilyOngoing] ONGOING docs =',
+      snap.size,
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    );
+
+    return snap.docs.map((d) => ({
+      progressId: d.id,
+      ...(d.data() as any),
+      mode: 'family' as const,
+    }));
+  },
+
+  // 3) getAllOngoing: all 버전 래퍼
+  async getAllOngoing(params: { uid: string; familyId?: string | null }) {
+    const { uid, familyId } = params;
+
+    const personal = await this.getPersonalOngoing(uid);
+    const family = familyId ? await this.getFamilyOngoing(familyId) : [];
+    console.log('[challengeService.getAllOngoing] result lengths =', {
+      personal: personal.length,
+      family: family.length,
+    });
+
+    return [...personal, ...family];
   },
 
   /** 추천 챌린지: /challenges 템플릿에서 읽기 */
