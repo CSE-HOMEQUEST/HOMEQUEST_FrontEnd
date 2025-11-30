@@ -10,14 +10,12 @@ import { useRewardStore } from '@/src/store/useRewardStore';
 export type Filter = '전체' | '절약' | '가사' | '헬스' | '나' | '가족';
 
 export type Challenge = {
-  // 🔹 challengeId (템플릿/진행 공통 ID)
-  id: string;
-
-  // 🔹 진행 문서 id (Firestore progress 문서 id)
-  progressId?: string;
+  id: string; // challengeId (템플릿/진행 공통 ID)
+  progressId?: string; // 진행 문서 id (Firestore progress 문서 id)
+  category: Filter; // audience 용 ('나' | '가족')
+  domainCategory?: Filter; // 절약/가사/헬스 같은 도메인 카테고리
 
   title: string;
-  category: Filter; // '나' | '가족' 등으로 사용
   status: 'ongoing' | 'recommended' | 'completed' | 'failed';
   progressPct?: number;
   rewardPoints?: number;
@@ -44,6 +42,19 @@ type Actions = {
   updateProgress: (id: string, pct: number) => void;
   completeChallenge: (id: string) => Promise<void>;
   dismissRecommendation: (id: string) => Promise<void>;
+};
+
+const mapFsCategoryToFilter = (fsCategory?: string | null): Filter => {
+  switch (fsCategory) {
+    case 'saving':
+      return '절약';
+    case 'chores':
+      return '가사';
+    case 'health':
+      return '헬스';
+    default:
+      return '전체';
+  }
 };
 
 /** Store 생성 */
@@ -89,7 +100,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         familyId,
       });
       const recPage = await challengeService.getRecommended({
-        filter: get().currentFilter,
+        cursor: null,
       });
 
       console.log('🔥 hydrate | ongoingRaw:', ongoingRaw);
@@ -99,13 +110,16 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       const ongoing: Challenge[] = ongoingRaw.map((d: any) => {
         const isPersonal = d.mode === 'personal';
 
-        // title: 기존 user-challenge 구조(title) + 새 progress 구조(challengeTitle) 둘 다 대응
         const title: string = d.title ?? d.challengeTitle ?? '';
 
-        // audience 용 카테고리는 '나' or '가족'으로 강제
-        const category: Filter = isPersonal ? '나' : '가족';
+        // audience (나/가족)
+        const audienceCategory: Filter = isPersonal ? '나' : '가족';
 
-        // 진행률: progressPct 필드 있으면 그거, 없으면 current/target으로 계산
+        // 절약/가사/헬스
+        const domainCategory: Filter = mapFsCategoryToFilter(
+          d.challengeCategory as string | undefined,
+        );
+
         const progressPct: number =
           typeof d.progressPct === 'number'
             ? d.progressPct
@@ -116,32 +130,38 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
                 )
               : 0;
 
-        // 리워드 포인트: 기존 rewardPoints 또는 totalPersonalPoints/totalFamilyPoints 활용
         const rewardPoints: number =
           d.rewardPoints ?? d.totalPersonalPoints ?? d.totalFamilyPoints ?? 0;
 
         return {
           id: d.challengeId,
-          progressId: d.progressId, // challengeService에서 추가한 progress 문서 id
+          progressId: d.progressId,
           title,
-          category,
+          category: audienceCategory, // 나/가족
+          domainCategory, // 절약/가사/헬스/전체
           status: 'ongoing',
           progressPct,
           rewardPoints,
         };
       });
 
-      const recommended: Challenge[] = recPage.items.map((dto: any) => ({
-        id: dto.id,
-        title: dto.title,
-        category:
-          dto.mode === 'personal' ? ('나' as Filter) : ('가족' as Filter),
-        status: 'recommended',
-        rewardPoints:
-          dto.mode === 'personal'
-            ? dto.basePersonalPoints
-            : dto.baseFamilyPoints,
-      }));
+      const recommended: Challenge[] = recPage.items.map((dto: any) => {
+        const audienceCategory: Filter =
+          dto.mode === 'personal' ? '나' : '가족';
+        const domainCategory: Filter = mapFsCategoryToFilter(dto.category);
+
+        return {
+          id: dto.id,
+          title: dto.title,
+          category: audienceCategory, // 나/가족
+          domainCategory, // 절약/가사/헬스/전체
+          status: 'recommended',
+          rewardPoints:
+            dto.mode === 'personal'
+              ? dto.basePersonalPoints
+              : dto.baseFamilyPoints,
+        };
+      });
 
       console.log('🔥 hydrate | mapped ongoing:', ongoing);
       console.log('🔥 hydrate | mapped recommended:', recommended);
@@ -171,21 +191,26 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     set((s) => ({ loading: { ...s.loading, recMore: true } }));
     try {
       const page = await challengeService.getRecommended({
-        filter: get().currentFilter,
-        cursor: cur,
+        cursor: null,
       });
 
-      const more: Challenge[] = page.items.map((dto: any) => ({
-        id: dto.id,
-        title: dto.title,
-        category:
-          dto.mode === 'personal' ? ('나' as Filter) : ('가족' as Filter),
-        status: 'recommended',
-        rewardPoints:
-          dto.mode === 'personal'
-            ? dto.basePersonalPoints
-            : dto.baseFamilyPoints,
-      }));
+      const more: Challenge[] = page.items.map((dto: any) => {
+        const audienceCategory: Filter =
+          dto.mode === 'personal' ? '나' : '가족';
+        const domainCategory: Filter = mapFsCategoryToFilter(dto.category);
+
+        return {
+          id: dto.id,
+          title: dto.title,
+          category: audienceCategory, // 나/가족
+          domainCategory, // 절약/가사/헬스/전체
+          status: 'recommended',
+          rewardPoints:
+            dto.mode === 'personal'
+              ? dto.basePersonalPoints
+              : dto.baseFamilyPoints,
+        };
+      });
 
       set((s) => ({
         recommended: [...s.recommended, ...more],

@@ -486,11 +486,24 @@ export function Challenge() {
     hydrate();
   };
 
-  // 🔹 '나' / '가족'에 맞게 필터링된 리스트
-  const filteredOngoing = ongoing.filter((c) => c.category === audience);
-  const filteredRecommended = recommended.filter(
-    (c) => c.category === audience,
-  );
+  // 1) 진행중: audience + currentFilter 둘 다 적용
+  const filteredOngoing = ongoing.filter((c) => {
+    // 나/가족
+    if (c.category !== audience) return false;
+
+    // 전체면 카테고리 필터 패스
+    if (currentFilter === '전체') return true;
+
+    // 절약/가사/헬스 비교
+    return c.domainCategory === currentFilter;
+  });
+
+  // 2) 추천: audience + currentFilter 둘 다 적용
+  const filteredRecommended = recommended.filter((c) => {
+    if (c.category !== audience) return false;
+    if (currentFilter === '전체') return true;
+    return c.domainCategory === currentFilter;
+  });
 
   return (
     <SafeAreaView style={styles.safe}>

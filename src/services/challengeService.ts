@@ -72,19 +72,6 @@ const mapDocToDto = (
   };
 };
 
-const mapFilterToFsCategory = (filter: Filter): string | null => {
-  switch (filter) {
-    case '절약':
-      return 'saving';
-    case '가사':
-      return 'chores';
-    case '헬스':
-      return 'health';
-    default:
-      return null;
-  }
-};
-
 export const challengeService = {
   // 1) getPersonalOngoing: 개인 진행중
   async getPersonalOngoing(uid: string) {
@@ -139,15 +126,12 @@ export const challengeService = {
   },
 
   /** 추천 챌린지: /challenges 템플릿에서 읽기 */
-  async getRecommended(opts: { filter: Filter; cursor?: string | null }) {
-    const { filter, cursor } = opts;
+  async getRecommended(opts: { cursor?: string | null }) {
+    const { cursor } = opts;
     const colRef = collection(db, 'challenges');
-    const fsCategory = mapFilterToFsCategory(filter);
 
-    let qAny: any = query(colRef, orderBy('createdAt', 'desc'), limit(10));
-    if (fsCategory) {
-      qAny = query(qAny, where('category', '==', fsCategory));
-    }
+    let qAny: any = query(colRef, orderBy('createdAt', 'desc'), limit(20));
+
     if (cursor) {
       qAny = query(qAny, startAfter(cursor));
     }
