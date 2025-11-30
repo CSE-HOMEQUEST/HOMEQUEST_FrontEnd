@@ -2,7 +2,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -18,6 +18,155 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
 } from 'react-native-reanimated';
+
+// ───── AI 추천 응답 타입 ─────
+type ChallengeInfo = {
+  challengeId: string;
+  category: string;
+  mode?: string;
+  freq?: number;
+  durationType?: string;
+  deviceType?: string;
+  progressType?: string;
+  adj_score?: number;
+  score?: number;
+};
+
+type SpeedInfo = {
+  challengeId: string;
+  category: string;
+  userId: string;
+  notificationTime: string; // "17:00:00"
+  weekday: number;
+  freq: number;
+  familyPoints: number;
+  personalPoints: number;
+  adj_score: number;
+  score: number;
+};
+
+type TodayReportResponse = {
+  userId: string;
+  energyHigh?: boolean;
+  main_auc?: number;
+  speed_auc?: number;
+  daily?: ChallengeInfo;
+  monthly?: ChallengeInfo;
+  speed?: SpeedInfo;
+};
+
+// challengeId → 화면에 보여줄 이름
+function getChallengeName(challengeId: string) {
+  switch (challengeId) {
+    case 'daily_water_2':
+      return '아침·저녁 물 두 잔 마시기';
+    case 'monthly_heating':
+      return '한 달간 난방 절약';
+    case 'speed_dishwasher':
+      return '저녁 식기세척기 릴레이';
+    default:
+      return challengeId;
+  }
+}
+
+function formatCategory(category?: string) {
+  if (!category) return '';
+  if (category === 'health') return '건강';
+  if (category === 'energy') return '에너지';
+  if (category === 'dishwashing') return '설거지';
+  return category;
+}
+
+function formatNotificationTime(time: string) {
+  // "17:00:00" → "저녁 5시"
+  const [hourStr] = time.split(':');
+  const hour = parseInt(hourStr, 10);
+  if (Number.isNaN(hour)) return time;
+
+  if (hour < 12) return `오전 ${hour}시`;
+  if (hour === 12) return '정오 12시';
+  if (hour < 18) return `오후 ${hour - 12}시`;
+  return `저녁 ${hour - 12}시`;
+}
+
+// AI 박스 안에 들어갈 한글 문장 생성
+function formatAiAnalysis(data: TodayReportResponse): string {
+  const lines: string[] = [];
+
+  // 1) 오늘 에너지 분위기 한 줄
+  if (typeof data.energyHigh === 'boolean') {
+    if (data.energyHigh) {
+      lines.push('오늘은 에너지 사용량이 평소보다 조금 높은 편이에요.');
+    } else {
+      lines.push('오늘은 에너지 사용량이 비교적 안정적으로 유지되고 있어요.');
+    }
+  }
+
+  // 2) 오늘의 개인 챌린지 (daily)
+  if (data.daily) {
+    const name = getChallengeName(data.daily.challengeId);
+    const category = formatCategory(data.daily.category);
+    lines.push(`오늘의 개인 챌린지: ${name} (${category})`);
+  }
+
+  // 3) 이번 달 가족 챌린지 (monthly)
+  if (data.monthly) {
+    const name = getChallengeName(data.monthly.challengeId);
+    const category = formatCategory(data.monthly.category);
+    lines.push(`이번 달 가족 챌린지: ${name} (${category})`);
+  }
+
+  // 4) 특정 시간에 하면 좋은 미션 (speed)
+  if (data.speed) {
+    const name = getChallengeName(data.speed.challengeId);
+    const timeText = formatNotificationTime(data.speed.notificationTime);
+    lines.push(
+      `${timeText}에 진행하면 좋은 '${name}' 미션도 추천돼요. ` +
+        `가족 포인트 ${data.speed.familyPoints}점, 개인 포인트 ${data.speed.personalPoints}점을 받을 수 있어요.`,
+    );
+  }
+
+  if (lines.length === 0) {
+    return '오늘의 데이터를 분석했지만, 추천할 만한 챌린지를 아직 찾지 못했어요.';
+  }
+
+  // 위에서 만든 문장들을 줄바꿈으로 이어서, 지금 UI 박스 안에 그대로 들어가게
+  return lines.join('\n');
+}
+
+/* ────────────── FastAPI 호출 설정 ────────────── */
+const AI_API_URL = 'https://callai-jb7eegn52q-du.a.run.app';
+
+async function fetchTodayReportFromAPI(userId: string): Promise<string> {
+  try {
+    const res = await fetch(AI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId, // 예: 'user_4'
+        top_k: 3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.log('[AI API ERROR]', res.status, errorText);
+      throw new Error(errorText || `status ${res.status}`);
+    }
+
+    const data: TodayReportResponse = await res.json();
+    console.log('[AI API RAW DATA]', data);
+
+    // 여기서 JSON 전체를 문자열로 찍던 코드 대신,
+    // 우리가 만든 formatAiAnalysis 사용
+    return formatAiAnalysis(data);
+  } catch (err) {
+    console.error('[fetchTodayReportFromAPI] error:', err);
+    throw err;
+  }
+}
 
 /* ────────────── Header ────────────── */
 function Header() {
@@ -182,13 +331,33 @@ function HelpIcons({ onReportPress }: { onReportPress: () => void }) {
 }
 
 /* ────────────── Today’s Report Popup ────────────── */
+type TodayReportPopupProps = {
+  visible: boolean;
+  onClose: () => void;
+  aiText: string;
+  aiLoading: boolean;
+  aiError: string | null;
+  onRetry: () => void;
+};
+
 function TodayReportPopup({
   visible,
   onClose,
-}: {
-  visible: boolean;
-  onClose: () => void;
-}) {
+  aiText,
+  aiLoading,
+  aiError,
+  onRetry,
+}: TodayReportPopupProps) {
+  const renderAiText = () => {
+    if (aiLoading) {
+      return 'AI 패턴 분석을 불러오는 중입니다...';
+    }
+    if (aiError) {
+      return `${aiError}\n\n다시 시도해보세요.`;
+    }
+    return aiText;
+  };
+
   return (
     <Modal transparent animationType="fade" visible={visible}>
       <View style={styles.overlay}>
@@ -198,46 +367,52 @@ function TodayReportPopup({
           {/* AI 분석 */}
           <View style={styles.aiBox}>
             <Text style={styles.aiLabel}>AI 패턴 분석 :</Text>
-            <Text style={styles.aiText}>
-              누나는 월요일마다 늦게 집에 들어오네요.{'\n'}
-              아침 설거지로 가사 챌린지를 미리 수행해보는 건{'\n'}어떨까요?
-            </Text>
+            <Text style={styles.aiText}>{renderAiText()}</Text>
+
+            {/* 에러일 때만 재시도 버튼 노출 (선택사항) */}
+            {aiError && (
+              <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+                <Text style={styles.retryText}>다시 시도</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.line2} />
 
           {/* 챌린지 요약 */}
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              이번 달의 가족 챌린지 : 난방 절약 성공!
-            </Text>
-            <Text style={styles.point}>+40p</Text>
-          </View>
+          <View className="challenge-summary">
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 달의 가족 챌린지 : 난방 절약 성공!
+              </Text>
+              <Text style={styles.point}>+40p</Text>
+            </View>
 
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              이번 주의 가족 챌린지 : {'\n'}릴레이 로봇청소기 돌리기 성공
-            </Text>
-            <Text style={styles.point}>+50p</Text>
-          </View>
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 주의 가족 챌린지 : {'\n'}릴레이 로봇청소기 돌리기 성공
+              </Text>
+              <Text style={styles.point}>+50p</Text>
+            </View>
 
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              오늘의 개인 챌린지 : 아침에 물 한잔 마시기
-            </Text>
-            <Text style={styles.point}>+10p</Text>
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 개인 챌린지 : 아침에 물 한잔 마시기
+              </Text>
+              <Text style={styles.point}>+10p</Text>
+            </View>
           </View>
 
           {/* 확인 버튼 */}
@@ -301,6 +476,33 @@ function BottomTabBar() {
 export default function Home() {
   const [reportVisible, setReportVisible] = useState(false);
 
+  const [aiText, setAiText] = useState(
+    '오늘 하루 데이터 기반으로 패턴을 분석하고 있어요.',
+  );
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const loadTodayReport = async () => {
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const text = await fetchTodayReportFromAPI('user_4');
+      setAiText(text);
+    } catch {
+      throw new Error('AI 요청 중 오류 발생');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // 모달이 열릴 때마다 AI 분석 새로 불러오기
+  useEffect(() => {
+    if (reportVisible) {
+      loadTodayReport();
+    }
+  }, [reportVisible]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <Header />
@@ -316,6 +518,10 @@ export default function Home() {
       <TodayReportPopup
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
+        aiText={aiText}
+        aiLoading={aiLoading}
+        aiError={aiError}
+        onRetry={loadTodayReport}
       />
     </SafeAreaView>
   );
@@ -552,4 +758,17 @@ const styles = StyleSheet.create({
   },
   tabButton: { paddingVertical: 8, paddingHorizontal: 12 },
   tabIcon: { width: 50, height: 50 },
+
+  retryButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#EFEFEF',
+  },
+  retryText: {
+    fontSize: 12,
+    color: '#333333',
+  },
 });
