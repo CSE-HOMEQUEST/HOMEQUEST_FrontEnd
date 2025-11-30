@@ -181,15 +181,15 @@ export const rankingService: RankingService = {
           return dto;
         });
 
-        console.log(
-          '[subscribeFamiliesRanking] ranking updated:',
-          list.map((f) => ({
-            rank: f.rank,
-            id: f.id,
-            name: f.familyName,
-            point: f.totalFamilyPoints,
-          })),
-        );
+        // console.log(
+        //   '[subscribeFamiliesRanking] ranking updated:',
+        //   list.map((f) => ({
+        //     rank: f.rank,
+        //     id: f.id,
+        //     name: f.familyName,
+        //     point: f.totalFamilyPoints,
+        //   })),
+        // );
 
         onChange(list);
       },

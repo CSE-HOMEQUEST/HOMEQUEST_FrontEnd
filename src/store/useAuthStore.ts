@@ -17,6 +17,8 @@ type User = {
   familyRole?: string; // !! 온보딩 프로필
   location?: string; // !! 온보딩 프로필
   firstLogin?: boolean; // true = 첫 로그인 → 온보딩 필요
+  familyId?: string; // 가족 ID
+  familyName?: string; // 가족 이름
 };
 
 type AuthState = {
@@ -72,13 +74,22 @@ export const useAuthStore = create<AuthState>()(
               familyRole: profile.roleInFamily ?? undefined,
               location: profile.location ?? undefined,
               firstLogin: isFirstLogin,
+
+              familyId: profile.familyId ?? undefined,
+              familyName: profile.familyName ?? undefined,
             },
             token: uid,
             isLoading: false,
             lastSignedUpId: isFirstLogin ? null : lastSignedUpId,
           });
 
-          console.log('[store:login set]', { email, uid, isFirstLogin });
+          console.log('[store:login set]', {
+            email,
+            uid,
+            isFirstLogin,
+            familyId: profile.familyId,
+            familyName: profile.familyName,
+          });
         } catch (e) {
           set({ isLoading: false });
           console.log('[store:login error]', e);

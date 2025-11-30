@@ -1,6 +1,6 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
-import { doc, updateDoc, increment } from 'firebase/firestore';
+import { doc, increment, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -704,7 +704,7 @@ export function Ranking() {
           score: f.totalFamilyPoints,
         }));
 
-        console.log('[Ranking] families from Firestore =', newRaw);
+        // console.log('[Ranking] families from Firestore =', newRaw);
 
         // 첫 스냅샷은 "그냥 정렬된 화면"만 보여주고, 애니메이션/랭킹변화 로직은 건너뛴다
         if (isInitialLoadRef.current) {
@@ -750,7 +750,7 @@ export function Ranking() {
       } catch (e) {
         console.log('[DevBoost] fast booster error', e);
       }
-    }, 700);
+    }, 6000000);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -796,7 +796,7 @@ export function Ranking() {
       } catch (e) {
         console.log('[DevBoost] fast booster error', e);
       }
-    }, 700); // 1.5초
+    }, 6000000); // 1.5초
 
     return () => {
       clearInterval(intervalId);

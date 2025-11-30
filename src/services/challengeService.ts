@@ -72,49 +72,66 @@ const mapDocToDto = (
   };
 };
 
-const mapFilterToFsCategory = (filter: Filter): string | null => {
-  switch (filter) {
-    case '절약':
-      return 'saving';
-    case '가사':
-      return 'chores';
-    case '헬스':
-      return 'health';
-    default:
-      return null;
-  }
-};
-
 export const challengeService = {
-  /** 진행중인 챌린지: /users/{uid}/challenges 에서 읽기 */
-  async getOngoing() {
-    const user = auth.currentUser;
-    if (!user) return [];
-
-    const colRef = collection(db, 'users', user.uid, 'challengeProgress');
-
-    // status == 'ONGOING' 인 것만
+  // 1) getPersonalOngoing: 개인 진행중
+  async getPersonalOngoing(uid: string) {
+    const colRef = collection(db, 'users', uid, 'challengeProgress');
     const q = query(colRef, where('status', '==', 'ONGOING'));
     const snap = await getDocs(q);
 
-    // progress 문서 id도 같이 넘겨줌 (progressId)
+    console.log(
+      '[getPersonalOngoing] ONGOING docs =',
+      snap.size,
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    );
+
     return snap.docs.map((d) => ({
       progressId: d.id,
       ...(d.data() as any),
-    })) as ChallengeProgressDoc[];
-    // 여기서는 raw 데이터로 내보내고, store에서 앱 타입으로 변환
+      mode: 'personal' as const,
+    }));
+  },
+
+  // 2) getFamilyOngoing: 가족 진행중
+  async getFamilyOngoing(familyId: string) {
+    const colRef = collection(db, 'families', familyId, 'challengeProgress');
+    const q = query(colRef, where('status', '==', 'ONGOING'));
+    const snap = await getDocs(q);
+
+    console.log(
+      '[getFamilyOngoing] ONGOING docs =',
+      snap.size,
+      snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    );
+
+    return snap.docs.map((d) => ({
+      progressId: d.id,
+      ...(d.data() as any),
+      mode: 'family' as const,
+    }));
+  },
+
+  // 3) getAllOngoing: all 버전 래퍼
+  async getAllOngoing(params: { uid: string; familyId?: string | null }) {
+    const { uid, familyId } = params;
+
+    const personal = await this.getPersonalOngoing(uid);
+    const family = familyId ? await this.getFamilyOngoing(familyId) : [];
+    console.log('[challengeService.getAllOngoing] result lengths =', {
+      personal: personal.length,
+      family: family.length,
+    });
+
+    return [...personal, ...family];
   },
 
   /** 추천 챌린지: /challenges 템플릿에서 읽기 */
-  async getRecommended(opts: { filter: Filter; cursor?: string | null }) {
-    const { filter, cursor } = opts;
+  async getRecommended(opts: { cursor?: string | null }) {
+    const { cursor } = opts;
     const colRef = collection(db, 'challenges');
-    const fsCategory = mapFilterToFsCategory(filter);
 
-    let qAny: any = query(colRef, orderBy('createdAt', 'desc'), limit(10));
-    if (fsCategory) {
-      qAny = query(qAny, where('category', '==', fsCategory));
-    }
+    let qAny: any = query(colRef, orderBy('createdAt', 'desc'), limit(20));
+
     if (cursor) {
       qAny = query(qAny, startAfter(cursor));
     }
