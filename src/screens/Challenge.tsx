@@ -1,3 +1,4 @@
+// src/screens/Challenge.tsx
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
   View,
 } from 'react-native';
 
+import ChallengeDetail from '@/src/components/ChallengeDetail';
 import { auth } from '@/src/firebase/firebase';
 import type {
   Challenge as ChallengeItem,
@@ -221,7 +223,13 @@ function ChallengeCardv2({
   );
 }
 
-function ChallengeProgressSection({ items }: { items: ChallengeItem[] }) {
+function ChallengeProgressSection({
+  items,
+  onPressRelayDetail,
+}: {
+  items: ChallengeItem[];
+  onPressRelayDetail: () => void;
+}) {
   return (
     <View style={styles.challengeProgressSection}>
       <Text style={[styles.sectionTitle, styles.progressSectionTitle]}>
@@ -246,7 +254,7 @@ function ChallengeProgressSection({ items }: { items: ChallengeItem[] }) {
               title={c.title}
               badgeText={`${c.rewardPoints ?? 0}p`}
               progressRatio={(c.progressPct ?? 0) / 100}
-              onPressDetail={() => {}}
+              onPressDetail={onPressRelayDetail}
             />
           ))
         )}
@@ -439,6 +447,7 @@ function BottomTabBar() {
 
 // 메인 페이지
 export function Challenge() {
+  const [showDetail, setShowDetail] = useState(false);
   const [activeRecIndex, setActiveRecIndex] = useState(0);
   const [audience, setAudience] = useState<Audience>('나');
 
@@ -527,7 +536,10 @@ export function Challenge() {
 
           <MyChallengeSection />
 
-          <ChallengeProgressSection items={filteredOngoing} />
+          <ChallengeProgressSection
+            items={filteredOngoing}
+            onPressRelayDetail={() => setShowDetail(true)}
+          />
 
           <RecommendedChallengeSection
             items={filteredRecommended}
@@ -543,6 +555,19 @@ export function Challenge() {
         total={filteredRecommended.length}
       />
       <BottomTabBar />
+
+      {showDetail && (
+        <View style={styles.detailSheetWrapper}>
+          <ChallengeDetail
+            onClose={() => setShowDetail(false)}
+            // 아래 네 개는 일단 더미값으로만 넘겨도 됨
+            challengeId="dummy-id"
+            from="ongoing"
+            audience={audience}
+            category={currentFilter}
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1008,7 +1033,6 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
   },
-  /* ===== 상세 하단시트 ===== */
 
   detailSheetWrapper: {
     position: 'absolute',
@@ -1016,281 +1040,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 1, // 탭바 위
     alignItems: 'center',
-  },
-  detailContainer: {
-    width: '100%',
-    maxWidth: 393,
-    height: 700,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
-    paddingTop: 8,
-    paddingHorizontal: 24,
-  },
-  detailArrowButton: {
-    alignSelf: 'center',
-    marginBottom: 0,
-  },
-  detailArrowIcon: {
-    width: 31,
-    height: 43,
-    resizeMode: 'contain',
-  },
-  detailHeader: {
-    marginBottom: -7,
-    marginLeft: 20,
-  },
-  detailCategoryLabel: {
-    color: '#A0A0A0',
-    fontFamily: 'Roboto',
-    fontSize: 15,
-    marginBottom: 7,
-  },
-  detailTitle: {
-    width: 298,
-    color: '#353535',
-    fontFamily: 'Roboto',
-    fontSize: 15,
-  },
-
-  detailProgressWrapper: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  detailProgressDotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 54,
-    marginBottom: -33,
-  },
-  detailDotDone: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#5E75FD',
-  },
-  detailDotYet: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#D9D9D9',
-  },
-  detailRobotIcon: {
-    width: 60,
-    height: 59,
-    resizeMode: 'contain',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    zIndex: 10,
-  },
-  detailProgressLineBg: {
-    width: 243,
-    height: 6,
-    borderRadius: 10,
-    backgroundColor: '#D9D9D9',
-    overflow: 'hidden',
-    alignItems: 'flex-start',
-  },
-  detailProgressLineFill: {
-    width: 164,
-    height: 6,
-    borderRadius: 10,
-    backgroundColor: '#5E75FD',
-  },
-
-  progressBubbleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start', // ✅ 왼쪽 정렬
-    columnGap: 10, // ✅ 버블 사이 간격 (기존보다 좁게 조정)
-    paddingHorizontal: 0, // ✅ 기존 패딩 제거 (좌우 간격 넓힐 때만 필요)
-    marginTop: 10,
-    marginBottom: 7,
-    marginLeft: 15, // ✅ 전체를 왼쪽으로 옮기고 싶을 때 조정 (값 작일수록 왼쪽으로)
-  },
-
-  progressBubble: {
-    backgroundColor: '#353535',
-    borderRadius: 30,
-    paddingHorizontal: 2,
-    paddingVertical: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 70,
-    position: 'relative', // <- 삼각형 꼬리를 내부에 두기 위해 필요
-  },
-
-  progressBubbleText: {
-    color: '#FFFFFF',
-    fontFamily: 'Roboto',
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-
-  progressBubbleTail: {
-    position: 'absolute',
-    top: -6,
-    left: '50%',
-    marginLeft: -6,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderBottomWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#353535',
-  },
-
-  detailMetaPillRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    columnGap: 11,
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  detailMetaPill: {
-    width: 91,
-    height: 19,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#353535',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  detailMetaPillText: {
-    fontSize: 12,
-    color: '#353535',
-    fontFamily: 'Roboto',
-  },
-  detailDivider: {
-    height: 1,
-    width: '120%',
-    backgroundColor: '#E0E0E0',
-    marginLeft: -24,
-    marginRight: -24,
-    marginBottom: 8,
-  },
-
-  /* 댓글 리스트 */
-  commentSection: {
-    flex: 1,
-    paddingHorizontal: 4,
-    paddingTop: 4,
-  },
-  commentCountLabel: {
-    color: '#A0A0A0',
-    fontFamily: 'Roboto',
-    fontSize: 15,
-    marginBottom: 4,
-  },
-  commentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 8,
-  },
-  commentRowDad: {
-    marginLeft: 40, // 숫자 키워서 원하는 만큼 이동해 봐
-    // 또는 paddingLeft: 12,
-  },
-  commentAvatarWrapper: {
-    width: 37,
-    height: 37,
-    borderRadius: 18.5,
-    backgroundColor: '#D9D9D9',
-    overflow: 'hidden',
-    marginRight: 15,
-  },
-  commentAvatar: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  commentContent: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  commentAuthor: {
-    color: '#353535',
-    fontFamily: 'Roboto',
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  commentText: {
-    color: '#353535',
-    fontFamily: 'Roboto',
-    fontSize: 15,
-    marginBottom: 2,
-  },
-  commentMeta: {
-    color: '#A0A0A0',
-    fontFamily: 'Roboto',
-    fontSize: 13,
-  },
-  commentLikeBox: {
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  commentLikeIcon: {
-    width: 21,
-    height: 21,
-    resizeMode: 'contain',
-    marginBottom: 2,
-  },
-  commentLikeCount: {
-    color: '#A0A0A0',
-    fontFamily: 'Roboto',
-    fontSize: 13,
-  },
-  commentInnerDivider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 4,
-  },
-
-  /* 댓글 입력 바 */
-  commentInputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    marginHorizontal: -24,
-    marginBottom: 10,
-  },
-  commentInput: {
-    flex: 1,
-    backgroundColor: '#F6F6F6',
-    borderRadius: 30,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    fontFamily: 'Roboto',
-    fontSize: 16,
-    color: '#353535',
-    marginRight: 8,
-    height: 41,
-  },
-  commentSendButton: {
-    width: 56,
-    height: 41,
-    borderRadius: 30,
-    backgroundColor: '#E0E0E0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  commentSendText: {
-    fontFamily: 'Roboto',
-    fontSize: 16,
-    color: '#A0A0A0',
   },
 });
 
