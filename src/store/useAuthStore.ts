@@ -1,8 +1,10 @@
 // src/store/useAuthStore.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { auth } from '@/src/firebase/firebase';
 import {
   apiLogin,
   apiSignUp,
@@ -59,26 +61,40 @@ export const useAuthStore = create<AuthState>()(
       login: async (email, password) => {
         set({ isLoading: true });
         try {
+          // 1) 🔐 Firebase Auth로 실제 로그인
+          const cred = await signInWithEmailAndPassword(auth, email, password);
+          const firebaseUser = cred.user;
+          console.log('[store:login] firebaseUser.uid =', firebaseUser.uid);
+
+          // 2) 🔗 기존 백엔드 로그인(프로필 조회) 그대로 사용
           const { uid, profile } = await apiLogin(email, password);
+
+          // 3) 첫 로그인 여부 계산
           const { lastSignedUpId } = get();
           const isFirstLogin = lastSignedUpId === email;
 
+          // 4) Zustand 상태 업데이트
           set({
             user: {
               email: profile.email ?? email,
-              userId: uid,
+              userId: uid, // firebaseUser.uid와 같을 거라고 가정
               phone: profile.phone ?? undefined,
               nickName: profile.nickName ?? undefined,
               familyRole: profile.roleInFamily ?? undefined,
               location: profile.location ?? undefined,
               firstLogin: isFirstLogin,
             },
-            token: uid,
+            token: uid, // 지금처럼 uid를 토큰처럼 계속 사용
             isLoading: false,
             lastSignedUpId: isFirstLogin ? null : lastSignedUpId,
           });
 
-          console.log('[store:login set]', { email, uid, isFirstLogin });
+          console.log('[store:login set]', {
+            email,
+            uidFromApi: uid,
+            uidFromFirebase: firebaseUser.uid,
+            isFirstLogin,
+          });
         } catch (e) {
           set({ isLoading: false });
           console.log('[store:login error]', e);

@@ -12,6 +12,7 @@ import {
   startAfter,
   updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
@@ -85,11 +86,28 @@ const mapFilterToFsCategory = (filter: Filter): string | null => {
   }
 };
 
+// 🔹 startChallenge에서 사용할 targetValue 계산 함수
+function getTargetValueByChallengeId(challengeId: string): number {
+  switch (challengeId) {
+    case 'daily_water_2':
+      return 30; // 예: 한 달 동안 30번 수행
+    case 'monthly_heating':
+      return 1; // 예: 한 달간 난방 절약 성공 1회
+    case 'speed_dishwasher':
+      return 4; // 예: 한 주에 4회 릴레이
+    default:
+      return 1;
+  }
+}
+
 export const challengeService = {
   /** 진행중인 챌린지: /users/{uid}/challenges 에서 읽기 */
   async getOngoing() {
     const user = auth.currentUser;
-    if (!user) return [];
+    if (!user) {
+      console.log('🚨 [getOngoing] user is NULL → 로그인 필요 상태');
+      return [];
+    }
 
     const colRef = collection(db, 'users', user.uid, 'challengeProgress');
 
@@ -130,9 +148,16 @@ export const challengeService = {
 
   /** 도전 시작 */
   async startChallenge(challengeId: string) {
-    const user = auth.currentUser;
-    if (!user) throw new Error('로그인 필요');
+    console.log('🔥 [startChallenge] called with challengeId =', challengeId);
+    console.log('🔥 [startChallenge] auth.currentUser =', auth.currentUser);
 
+    const user = auth.currentUser;
+    if (!user) {
+      console.log('🚨 [startChallenge] user is NULL → 로그인 필요 던짐');
+      throw new Error('로그인 필요');
+    }
+
+    // 1) 챌린지 템플릿 읽기
     const tmplRef = doc(db, 'challenges', challengeId);
     const tmplSnap = await getDoc(tmplRef);
     if (!tmplSnap.exists()) throw new Error('챌린지 템플릿 없음');
@@ -140,20 +165,61 @@ export const challengeService = {
     const d = tmplSnap.data() as any;
     const isPersonal = d.mode === 'personal';
 
-    const userCol = collection(db, 'users', user.uid, 'challenges');
-    await addDoc(userCol, {
+    // 🔹 목표/현재 값 설정
+    const targetValue = getTargetValueByChallengeId(challengeId);
+    const currentValue = 0; // ✅ 시작 시에는 항상 0
+
+    // 2) 진행중 챌린지 생성: users/{uid}/challengeProgress
+    const progressCol = collection(db, 'users', user.uid, 'challengeProgress');
+
+    await addDoc(progressCol, {
+      userId: user.uid,
       challengeId,
-      title: d.title,
-      category: isPersonal ? '나' : '가족',
+      challengeTitle: d.title,
+      mode: d.mode ?? (isPersonal ? 'personal' : 'family'),
+      category: d.category, // 여기 category는 Firestore 원본(saving/chores/health)
+
+      status: 'ONGOING',
       rewardPoints: isPersonal
         ? (d.basePersonalPoints ?? 0)
         : (d.baseFamilyPoints ?? 0),
 
-      status: 'ONGOING',
-
+      // ✅ 게이지 계산용
+      currentValue, // 지금까지 완료 횟수 (0부터 시작)
+      targetValue, // 목표 횟수
+      // progressPct는 굳이 안 써도 됨. 써도 어차피 hydrate에서 다시 계산할 거라 삭제 추천!
+      // progressPct: 0,
       progressPct: 0,
       startedAt: serverTimestamp(),
     });
+  },
+
+  /** 진행중 챌린지 모두 리셋(삭제) - 개발/시연용 유틸 */
+  async resetUserChallenges() {
+    const user = auth.currentUser;
+    if (!user) {
+      console.log('🚨 [resetUserChallenges] user is NULL');
+      return;
+    }
+
+    // 진행중 챌린지들이 들어있는 컬렉션 경로: users/{uid}/challengeProgress
+    const colRef = collection(db, 'users', user.uid, 'challengeProgress');
+    const snap = await getDocs(colRef);
+
+    if (snap.empty) {
+      console.log('✅ [resetUserChallenges] 삭제할 문서 없음');
+      return;
+    }
+
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => {
+      batch.delete(d.ref);
+    });
+
+    await batch.commit();
+    console.log(
+      `🔥 [resetUserChallenges] ${snap.docs.length}개 진행중 챌린지 삭제 완료`,
+    );
   },
 
   /** 완료 처리: user-challenge 문서 업데이트 + 포인트 리턴 */
