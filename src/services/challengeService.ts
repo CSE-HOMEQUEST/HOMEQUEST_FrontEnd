@@ -13,12 +13,15 @@ import {
   updateDoc,
   where,
   writeBatch,
+  setDoc,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 
 import { auth, db } from '@/src/firebase/firebase';
 import type { Filter } from '@/src/store/useChallengeStore';
+
+type Period = 'daily' | 'weekly' | 'monthly' | 'relay' | 'speed';
 
 // 챌린지 템플릿 DTO
 export type ChallengeDto = {
@@ -90,11 +93,11 @@ const mapFilterToFsCategory = (filter: Filter): string | null => {
 function getTargetValueByChallengeId(challengeId: string): number {
   switch (challengeId) {
     case 'daily_water_2':
-      return 30; // 예: 한 달 동안 30번 수행
+      return 2; // 예: 한 달 동안 30번 수행
     case 'monthly_heating':
-      return 1; // 예: 한 달간 난방 절약 성공 1회
+      return 100; // 예: 한 달간 난방 절약 성공 1회
     case 'speed_dishwasher':
-      return 4; // 예: 한 주에 4회 릴레이
+      return 1; // 예: 한 주에 4회 릴레이
     default:
       return 1;
   }
@@ -147,6 +150,7 @@ export const challengeService = {
   },
 
   /** 도전 시작 */
+  /** 도전 시작 */
   async startChallenge(challengeId: string) {
     console.log('🔥 [startChallenge] called with challengeId =', challengeId);
     console.log('🔥 [startChallenge] auth.currentUser =', auth.currentUser);
@@ -165,6 +169,19 @@ export const challengeService = {
     const d = tmplSnap.data() as any;
     const isPersonal = d.mode === 'personal';
 
+    // 🔹 durationType 정리 (daily / weekly / monthly / relay / speed)
+    const rawDuration = d.durationType as string | undefined;
+
+    let durationType: Period = 'daily';
+    if (
+      rawDuration === 'weekly' ||
+      rawDuration === 'monthly' ||
+      rawDuration === 'relay' ||
+      rawDuration === 'speed'
+    ) {
+      durationType = rawDuration;
+    }
+
     // 🔹 목표/현재 값 설정
     const targetValue = getTargetValueByChallengeId(challengeId);
     const currentValue = 0; // ✅ 시작 시에는 항상 0
@@ -177,7 +194,9 @@ export const challengeService = {
       challengeId,
       challengeTitle: d.title,
       mode: d.mode ?? (isPersonal ? 'personal' : 'family'),
-      category: d.category, // 여기 category는 Firestore 원본(saving/chores/health)
+      category: d.category, // saving / chores / health 또는 '절약' 같은 값
+
+      durationType, // ✅ 여기서 period 저장 (daily / monthly / speed 등)
 
       status: 'ONGOING',
       rewardPoints: isPersonal
@@ -187,8 +206,6 @@ export const challengeService = {
       // ✅ 게이지 계산용
       currentValue, // 지금까지 완료 횟수 (0부터 시작)
       targetValue, // 목표 횟수
-      // progressPct는 굳이 안 써도 됨. 써도 어차피 hydrate에서 다시 계산할 거라 삭제 추천!
-      // progressPct: 0,
       progressPct: 0,
       startedAt: serverTimestamp(),
     });
@@ -220,6 +237,41 @@ export const challengeService = {
     console.log(
       `🔥 [resetUserChallenges] ${snap.docs.length}개 진행중 챌린지 삭제 완료`,
     );
+  },
+
+  /** 🔹 유저가 숨긴(삭제한) 추천 챌린지 기록 */
+  async dismissRecommendedChallenge(challengeId: string) {
+    const user = auth.currentUser;
+    if (!user) {
+      console.log('[dismissRecommendedChallenge] no user');
+      return;
+    }
+
+    const colRef = collection(db, 'users', user.uid, 'dismissedRecommended');
+    // challengeId 를 문서 id로 쓰면, 같은 걸 여러 번 저장하지 않아도 됨
+    const docRef = doc(colRef, challengeId);
+
+    await setDoc(docRef, {
+      challengeId,
+      dismissedAt: serverTimestamp(),
+    });
+  },
+
+  /** 🔹 유저가 숨긴 추천 챌린지 목록 불러오기 */
+  async getDismissedRecommendedIds(): Promise<string[]> {
+    const user = auth.currentUser;
+    if (!user) {
+      console.log('[getDismissedRecommendedIds] no user');
+      return [];
+    }
+
+    const colRef = collection(db, 'users', user.uid, 'dismissedRecommended');
+    const snap = await getDocs(colRef);
+
+    return snap.docs.map((d) => {
+      const data = d.data() as any;
+      return (data.challengeId as string) ?? d.id;
+    });
   },
 
   /** 완료 처리: user-challenge 문서 업데이트 + 포인트 리턴 */

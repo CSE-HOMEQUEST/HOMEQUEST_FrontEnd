@@ -61,7 +61,9 @@ type TodayReportResponse = {
   speed?: SpeedInfoFromAI;
 };
 
-function formatPeriodLabel(period?: 'daily' | 'weekly' | 'monthly' | 'relay') {
+type Period = 'daily' | 'weekly' | 'monthly' | 'relay' | 'speed';
+
+function formatPeriodLabel(period?: Period) {
   switch (period) {
     case 'daily':
       return 'Daily';
@@ -71,8 +73,10 @@ function formatPeriodLabel(period?: 'daily' | 'weekly' | 'monthly' | 'relay') {
       return 'Monthly';
     case 'relay':
       return 'Relay';
+    case 'speed':
+      return 'Speed'; // 여기 원하는 라벨로 바꿔도 됨 (예: 'Speed' 대신 '스피드')
     default:
-      return 'Daily'; // 기본값
+      return 'Daily';
   }
 }
 
@@ -120,14 +124,14 @@ function mapAiResponseToChallenges(data: TodayReportResponse): ChallengeItem[] {
     } as ChallengeItem);
   }
 
-  // 저녁 식기세척기 릴레이 → 가족 | 가사
+  // 저녁 식기세척기 스피드 → 가족 | 가사
   if (data.speed) {
     result.push({
       id: data.speed.challengeId,
       title: getChallengeNameFromId(data.speed.challengeId),
       audience: '가족',
       category: '가사',
-      period: 'relay',
+      period: 'speed',
       rewardPoints: data.speed.familyPoints ?? 0,
       progressPct: 0,
     } as ChallengeItem);
@@ -363,6 +367,7 @@ function ChallengeCard({
 
   const theme = getCardTheme(variant);
   const clamped = Math.max(0, Math.min(progressRatio, 1));
+  const bubbleX = clamped === 0 ? 0.03 : clamped;
 
   return (
     <View style={[styles.challengeCard]}>
@@ -399,21 +404,19 @@ function ChallengeCard({
           )}
         </View>
 
-        {hasProgress && (
-          <View
-            style={[
-              styles.cardProgressBubble,
-              { left: `${clamped * 100}%` }, // 게이지 끝 위치
-            ]}
-          >
-            <Text style={styles.cardProgressBubbleText}>
-              {Math.round(clamped * 100)}%
-            </Text>
-
-            {/* 🔹 꼬리 추가 */}
-            <View style={styles.cardProgressBubbleTail} />
-          </View>
-        )}
+        {/* 👉 여기: hasProgress 제거하고 항상 렌더링 */}
+        <View
+          style={[
+            styles.cardProgressBubble,
+            { left: `${clamped * 100}%` },
+            { left: `${bubbleX * 100}%` },
+          ]}
+        >
+          <Text style={styles.cardProgressBubbleText}>
+            {Math.round(clamped * 100)}%
+          </Text>
+          <View style={styles.cardProgressBubbleTail} />
+        </View>
       </View>
     </View>
   );
@@ -755,8 +758,21 @@ export function Challenge() {
   const loadAiRecommended = async () => {
     try {
       setAiLoading(true);
-      const list = await fetchAiRecommendedChallenges('user_4');
-      setAiRecommended(list);
+
+      const user = auth.currentUser;
+      // 1) 로그인 안 되어 있으면 일단 기본 추천만
+      const userId = user?.uid ?? 'user_4';
+
+      // 2) AI 추천 리스트
+      const list = await fetchAiRecommendedChallenges(userId);
+
+      // 3) Firestore 에서 "숨긴 추천" 목록 읽기
+      const dismissedIds = await challengeService.getDismissedRecommendedIds();
+
+      // 4) 숨긴 애들 빼고 세팅
+      const filtered = list.filter((c) => !dismissedIds.includes(c.id));
+
+      setAiRecommended(filtered);
     } catch (e) {
       console.log('[loadAiRecommended] error:', e);
     } finally {
@@ -785,7 +801,9 @@ export function Challenge() {
   };
 
   const filteredOngoing = ongoing.filter(matchesFilter);
-  const filteredRecommended = aiRecommended.filter(matchesFilter);
+  const filteredRecommended = aiRecommended
+    .filter(matchesFilter)
+    .filter((rec) => !ongoing.some((og) => og.id === rec.id));
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -815,13 +833,23 @@ export function Challenge() {
             items={filteredRecommended}
             onPressStart={handlePressStart}
             onIndexChange={setActiveRecIndex}
-            onDismiss={(id) => {
-              // Firestore 템플릿은 건드리지 않고, 화면에서만 제거
+            onDismiss={async (id) => {
+              // 1) 로컬에서 바로 제거
               setAiRecommended((prev) => prev.filter((c) => c.id !== id));
+
+              // 2) Firestore에 "이 유저는 이 추천을 숨겼다" 저장
+              try {
+                await challengeService.dismissRecommendedChallenge(id);
+              } catch (e) {
+                console.log(
+                  '[onDismiss] dismissRecommendedChallenge error:',
+                  e,
+                );
+              }
             }}
             onRefresh={() => {
-              hydrate(); // 진행중 리스트 새로고침
-              loadAiRecommended(); // AI 추천 다시 불러오기
+              hydrate();
+              loadAiRecommended();
             }}
           />
         </View>
@@ -1020,7 +1048,7 @@ const styles = StyleSheet.create({
   },
 
   challengeCard: {
-    width: 170,
+    width: 160,
     height: 108,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
@@ -1069,7 +1097,7 @@ const styles = StyleSheet.create({
   challengeTitle: {
     fontSize: 13,
     color: '#353535',
-    marginBottom: 4,
+    marginBottom: 6,
     textAlign: 'center',
     alignSelf: 'center',
     fontFamily: 'Roboto',
@@ -1122,8 +1150,8 @@ const styles = StyleSheet.create({
   },
   progressBarBg: {
     height: 9,
-    marginLeft: 10,
-    marginRight: 10,
+    //marginLeft: 10,
+    //marginRight: 10,
     borderRadius: 10,
     backgroundColor: '#F6F6F6',
     overflow: 'hidden',
@@ -1137,62 +1165,45 @@ const styles = StyleSheet.create({
   progressBarContainer: {
     marginLeft: 10,
     marginRight: 10,
-    marginTop: 8,
+    marginTop: 17,
     position: 'relative',
   },
 
-  progressBubble: {
-    position: 'absolute',
-    bottom: 16, // 말풍선이 바 위로 올라오도록
-    transform: [{ translateX: -14 }], // 말풍선 가운데 맞추기 (말풍선 너비가 ~28px 기준)
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#5E75FD',
-  },
-
-  progressBubbleText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontFamily: 'Roboto',
-  },
-
-  // 🔹 챌린지 카드 위에 붙는 말풍선
+  // 진행중 카드 위 파란 말풍선
   cardProgressBubble: {
     position: 'absolute',
-    bottom: 16, // 바 위로 살짝 띄우기
-    transform: [{ translateX: -35 }], // 가운데 정렬 (minWidth 70 기준)
-    backgroundColor: '#5E75FD',
-    borderRadius: 30,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    bottom: 14, // 바 위로 살짝 띄우기
+    transform: [{ translateX: -21 }], // 말풍선 가로폭 ~56 기준 중앙정렬
+    backgroundColor: '#5E75FD', // 파란색
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 19,
+    minWidth: 40,
   },
 
   cardProgressBubbleText: {
     color: '#FFFFFF',
     fontFamily: 'Roboto',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 9,
   },
-  // 꼬리 (버블 안에 자식으로 넣기)
+
   cardProgressBubbleTail: {
     position: 'absolute',
-    bottom: -6,
+    bottom: -4, // 말풍선 아래로 살짝 내려가게
     left: '50%',
-    marginLeft: 4,
+    marginLeft: 6,
     width: 0,
     height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 6,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderTopWidth: 4,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#5E75FD',
+    borderTopColor: '#5E75FD', // 말풍선과 같은 파란색
   },
 
   /* 추천 챌린지 */

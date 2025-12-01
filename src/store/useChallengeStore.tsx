@@ -22,7 +22,7 @@ export type Challenge = {
   progressPct?: number;
   rewardPoints?: number;
   duration?: number;
-  period?: 'daily' | 'weekly' | 'monthly' | 'relay';
+  period?: 'daily' | 'weekly' | 'monthly' | 'relay' | 'speed';
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -46,6 +46,8 @@ type Actions = {
   completeChallenge: (id: string) => Promise<void>;
   dismissRecommendation: (id: string) => Promise<void>;
 };
+
+type Period = 'daily' | 'weekly' | 'monthly' | 'relay' | 'speed';
 
 /** Store 생성 */
 export const useChallengeStore = create<State & Actions>((set, get) => ({
@@ -96,6 +98,10 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
 
         // 🔹 Firestore category(saving/chores/health) → 화면용 필터(절약/가사/헬스)
         const categoryMap = (cat: string | undefined): Filter => {
+          if (cat === '절약' || cat === '가사' || cat === '헬스') {
+            // 이미 화면용 값이면 그대로
+            return cat;
+          }
           switch (cat) {
             case 'saving':
               return '절약';
@@ -114,9 +120,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           title: d.challengeTitle ?? d.title ?? '',
           audience: isPersonal ? '나' : '가족',
           category: categoryMap(d.category),
-          period:
-            (d.durationType as 'daily' | 'weekly' | 'monthly' | 'relay') ??
-            'daily',
+          period: (d.durationType as Period) ?? 'daily',
           status: 'ongoing',
           progressPct,
           rewardPoints:
