@@ -246,6 +246,7 @@ function ChallengeCardv2({
 }) {
   const hasProgress = progressRatio > 0;
   const [barWidth, setBarWidth] = useState(0);
+  const [isTitleMultiLine, setIsTitleMultiLine] = useState(false);
 
   const clampedRatio = Math.max(0, Math.min(progressRatio, 1));
   const bubbleWidth = 60; // 말풍선 대략 가로
@@ -275,10 +276,28 @@ function ChallengeCardv2({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.challengeTitle}>{title}</Text>
+      <Text
+        style={styles.challengeTitle}
+        numberOfLines={2}
+        ellipsizeMode="tail"
+        onTextLayout={(e) => {
+          const lineCount = e.nativeEvent.lines.length;
+          console.log('[ChallengeCardv2] title lineCount =', lineCount, title);
+          if (lineCount > 1 && !isTitleMultiLine) {
+            setIsTitleMultiLine(true);
+          }
+        }}
+      >
+        {title}
+      </Text>
 
       {/* 바 + 말풍선 같이 정렬 */}
-      <View style={styles.progressContainer}>
+      <View
+        style={[
+          styles.progressContainer,
+          isTitleMultiLine && styles.progressContainerTight,
+        ]}
+      >
         <View
           style={styles.progressBarBg}
           onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
@@ -952,7 +971,6 @@ const styles = StyleSheet.create({
   challengeTitle: {
     fontSize: 13,
     color: '#353535',
-    marginBottom: 4,
     textAlign: 'center',
     alignSelf: 'center',
     fontFamily: 'Roboto',
@@ -964,6 +982,9 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'flex-end',
     position: 'relative',
+  },
+  progressContainerTight: {
+    marginTop: -5, // 값 조정해서 맞추기
   },
 
   progressBarBg: {
