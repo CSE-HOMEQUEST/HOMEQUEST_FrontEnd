@@ -28,6 +28,8 @@ export type ChallengeDto = {
   basePersonalPoints?: number;
   baseFamilyPoints?: number;
   createdAt?: string;
+  durationType?: string;
+  recommendedTimeSlot?: string;
 };
 
 // ChallengeProgressDto (progress 문서 타입)
@@ -69,6 +71,8 @@ const mapDocToDto = (
     basePersonalPoints: (d.basePersonalPoints as number) ?? 0,
     baseFamilyPoints: (d.baseFamilyPoints as number) ?? 0,
     createdAt: d.createdAt as string | undefined,
+    durationType: d.durationType as string | undefined,
+    recommendedTimeSlot: d.recommendedTimeSlot as string | undefined,
   };
 };
 

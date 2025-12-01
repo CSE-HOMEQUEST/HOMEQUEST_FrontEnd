@@ -20,6 +20,13 @@ export type Challenge = {
   progressPct?: number;
   rewardPoints?: number;
   duration?: number;
+
+  durationType?: string; // 'daily' | 'weekly' | 'monthly' ...
+  recommendedTimeSlot?: string; // '14:00', 'evening' ...
+
+  currentValue?: number;
+  targetValue?: number;
+  unit?: string; // '회', '잔', '분' 같은 단위
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -120,6 +127,15 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           d.challengeCategory as string | undefined,
         );
 
+        // duration / time / current/target/unit
+        const durationType: string | undefined = d.durationType;
+        const recommendedTimeSlot: string | undefined = d.recommendedTimeSlot;
+        const currentValue: number =
+          typeof d.currentValue === 'number' ? d.currentValue : 0;
+        const targetValue: number | undefined =
+          typeof d.targetValue === 'number' ? d.targetValue : undefined;
+        const unit: string = (d.unit as string) ?? '';
+
         const progressPct: number =
           typeof d.progressPct === 'number'
             ? d.progressPct
@@ -140,6 +156,11 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           category: audienceCategory, // 나/가족
           domainCategory, // 절약/가사/헬스/전체
           status: 'ongoing',
+          durationType,
+          recommendedTimeSlot,
+          currentValue,
+          targetValue,
+          unit,
           progressPct,
           rewardPoints,
         };
@@ -160,6 +181,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
             dto.mode === 'personal'
               ? dto.basePersonalPoints
               : dto.baseFamilyPoints,
+          durationType: dto.durationType,
+          recommendedTimeSlot: dto.recommendedTimeSlot,
         };
       });
 
@@ -209,6 +232,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
             dto.mode === 'personal'
               ? dto.basePersonalPoints
               : dto.baseFamilyPoints,
+          durationType: dto.durationType,
+          recommendedTimeSlot: dto.recommendedTimeSlot,
         };
       });
 

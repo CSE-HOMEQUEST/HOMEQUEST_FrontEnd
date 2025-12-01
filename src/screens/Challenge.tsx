@@ -33,6 +33,49 @@ type CategoryFilterGroupProps = {
   onCategoryChange: (value: Filter) => void;
 };
 
+const mapDurationTypeToLabel = (durationType?: string): string => {
+  switch (durationType) {
+    case 'daily':
+      return '데일리';
+    case 'weekly':
+      return '위클리';
+    case 'monthly':
+      return '먼슬리';
+    default:
+      return '데일리';
+  }
+};
+
+// 영어 timeslot → 한국어
+const formatTimeSlotLabel = (timeSlot?: string): string => {
+  if (!timeSlot) return '';
+
+  switch (timeSlot) {
+    case 'morning':
+      return '아침';
+    case 'afternoon':
+      return '오후';
+    case 'evening':
+      return '저녁';
+    case 'night':
+      return '밤';
+    default:
+      // 14:00 같은 포맷은 일단 그대로 노출
+      return timeSlot;
+  }
+};
+
+const formatProgressBadge = (c: ChallengeItem): string => {
+  const cur = c.currentValue ?? 0;
+  const target = c.targetValue ?? 0;
+  const unit = c.unit ?? '';
+
+  if (!target) {
+    return unit ? `${cur}${unit}` : `${cur}`;
+  }
+  return unit ? `${cur}/${target}${unit}` : `${cur}/${target}`;
+};
+
 function Header() {
   return (
     <View style={styles.header}>
@@ -202,10 +245,21 @@ function ChallengeCardv2({
   onPressDetail?: () => void;
 }) {
   const hasProgress = progressRatio > 0;
+  const [barWidth, setBarWidth] = useState(0);
+
+  const clampedRatio = Math.max(0, Math.min(progressRatio, 1));
+  const bubbleWidth = 60; // 말풍선 대략 가로
+  const bubbleCenter = barWidth * clampedRatio;
+  const bubbleLeftRaw = bubbleCenter - bubbleWidth / 2;
+  const bubbleLeft = Math.min(
+    Math.max(bubbleLeftRaw, 0),
+    Math.max(barWidth - bubbleWidth, 0),
+  );
 
   return (
     <View style={styles.challengeCard2}>
       <View style={styles.challengeCardHeader}>
+        {/* 카테고리(절약/가사/헬스) | duration */}
         <Text style={styles.challengeMetaText}>{category}</Text>
         <View style={styles.metaDivider} />
         <Text style={styles.challengeMetaText}>{type}</Text>
@@ -223,22 +277,32 @@ function ChallengeCardv2({
 
       <Text style={styles.challengeTitle}>{title}</Text>
 
-      <View style={styles.badge2}>
-        <Text style={styles.badgeText2}>{badgeText}</Text>
-      </View>
-      <Image
-        source={require('../../assets/images/Polygon2.png')}
-        style={styles.badgeTriangle2}
-      />
+      {/* 바 + 말풍선 같이 정렬 */}
+      <View style={styles.progressContainer}>
+        <View
+          style={styles.progressBarBg}
+          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+        >
+          {hasProgress && (
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: barWidth * clampedRatio },
+              ]}
+            />
+          )}
+        </View>
 
-      <View style={styles.progressBarBg}>
-        {hasProgress && (
-          <View
-            style={[
-              styles.progressBarFill,
-              { width: `${progressRatio * 100}%` },
-            ]}
-          />
+        {hasProgress && barWidth > 0 && (
+          <View style={[styles.progressBubble, { left: bubbleLeft }]}>
+            <View style={styles.badge2}>
+              <Text style={styles.badgeText2}>{badgeText}</Text>
+            </View>
+            <Image
+              source={require('../../assets/images/Polygon2.png')}
+              style={styles.badgeTriangle2}
+            />
+          </View>
         )}
       </View>
     </View>
@@ -271,11 +335,18 @@ function ChallengeProgressSection({
           items.map((c) => (
             <ChallengeCardv2
               key={c.id}
-              category={c.category}
-              type="데일리" // TODO: durationType 들어오면 교체
+              // 카테고리: 나/가족 → 절약/헬스/가사
+              category={c.domainCategory ?? '전체'}
+              // durationType 기반 라벨
+              type={mapDurationTypeToLabel(c.durationType)}
               title={c.title}
-              badgeText={`${c.rewardPoints ?? 0}p`}
-              progressRatio={(c.progressPct ?? 0) / 100}
+              // 말풍선 텍스트: current/target + unit
+              badgeText={formatProgressBadge(c)}
+              // progressPct 기준 (0~1)
+              progressRatio={Math.max(
+                0,
+                Math.min((c.progressPct ?? 0) / 100, 1),
+              )}
               onPressDetail={onPressRelayDetail}
             />
           ))
@@ -332,60 +403,68 @@ function RecommendedChallengeSection({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingRight: 24 }}
         onMomentumScrollEnd={handleMomentumEnd}
-        renderItem={({ item }) => (
-          <View style={styles.recommendedCard}>
-            {/* 삭제 버튼 */}
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => {
-                console.log('❌ dismiss:', item.id);
-                onDismiss(item.id);
-              }}
-            >
-              <Image
-                source={require('../../assets/images/Vector.png')}
-                style={styles.deleteIcon}
-              />
-            </TouchableOpacity>
+        renderItem={({ item }) => {
+          const durationLabel = mapDurationTypeToLabel(item.durationType);
+          const timeLabel = formatTimeSlotLabel(item.recommendedTimeSlot);
 
-            <View style={styles.recommendedMetaRow}>
-              <Text style={styles.challengeMetaText}>{item.category}</Text>
-              <View style={styles.metaDivider} />
-              <Text style={styles.challengeMetaText}>
-                {item.category === '가족' ? '가족' : '개인'}
-              </Text>
-              <Image
-                source={require('../../assets/images/tdesign_time-filled.png')}
-                style={styles.metaIcon}
-              />
-              <Text style={styles.challengeMetaText}>데일리</Text>
-            </View>
-
-            <View style={styles.recommendedContentRow}>
-              <Image
-                source={require('../../assets/images/dishwasher.png')}
-                style={styles.dishwasherIcon}
-              />
-
-              <View style={styles.recommendedTextCol}>
-                <Text style={styles.recommendedTitle}>{item.title}</Text>
-                <Text style={styles.recommendedPoint}>
-                  {item.rewardPoints ?? 0}p 받기
-                </Text>
-              </View>
-
+          return (
+            <View style={styles.recommendedCard}>
+              {/* 삭제 버튼 */}
               <TouchableOpacity
-                style={styles.ctaButton}
+                style={styles.deleteButton}
                 onPress={() => {
-                  console.log('🚀 onPressStart challengeId:', item.id);
-                  onPressStart(item.id);
+                  console.log('❌ dismiss:', item.id);
+                  onDismiss(item.id);
                 }}
               >
-                <Text style={styles.ctaButtonText}>도전</Text>
+                <Image
+                  source={require('../../assets/images/Vector.png')}
+                  style={styles.deleteIcon}
+                />
               </TouchableOpacity>
+
+              <View style={styles.recommendedMetaRow}>
+                {/* 왼쪽: 카테고리 | 데일리 */}
+                <Text style={styles.challengeMetaText}>
+                  {item.domainCategory ?? '전체'}
+                </Text>
+                <View style={styles.metaDivider} />
+                <Text style={styles.challengeMetaText}>{durationLabel}</Text>
+                <Image
+                  source={require('../../assets/images/tdesign_time-filled.png')}
+                  style={styles.metaIcon}
+                />
+                {timeLabel ? (
+                  <Text style={styles.challengeMetaText}>{timeLabel}</Text>
+                ) : null}
+              </View>
+
+              <View style={styles.recommendedContentRow}>
+                <Image
+                  source={require('../../assets/images/dishwasher.png')}
+                  style={styles.dishwasherIcon}
+                />
+
+                <View style={styles.recommendedTextCol}>
+                  <Text style={styles.recommendedTitle}>{item.title}</Text>
+                  <Text style={styles.recommendedPoint}>
+                    {item.rewardPoints ?? 0}p 받기
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.ctaButton}
+                  onPress={() => {
+                    console.log('🚀 onPressStart challengeId:', item.id);
+                    onPressStart(item.id);
+                  }}
+                >
+                  <Text style={styles.ctaButtonText}>도전</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
+          );
+        }}
       />
     </View>
   );
@@ -829,22 +908,6 @@ const styles = StyleSheet.create({
     paddingRight: 16,
     paddingLeft: 20,
   },
-  challengeCard: {
-    width: 147,
-    height: 108,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    marginRight: 16,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    // 그림자
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-  },
 
   challengeCard2: {
     width: 135,
@@ -895,64 +958,52 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
     fontWeight: '500',
   },
-  badge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#5E75FD',
-    borderRadius: 30,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    marginBottom: 4,
-    marginLeft: 51,
-  },
-  badge2: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#5E75FD',
-    borderRadius: 30,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    marginBottom: 4,
+  progressContainer: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    height: 32,
+    justifyContent: 'flex-end',
+    position: 'relative',
   },
 
-  badgeTriangle: {
-    width: 10, // PNG 실제 크기에 맞게 조정
-    height: 8, // PNG 실제 크기에 맞게 조정
-    marginTop: -6, // 배지와 겹치지 않게 살짝 위로
-    marginLeft: 75, // 배지의 중앙에 오도록 위치 조정
-    resizeMode: 'contain',
-    alignSelf: 'flex-start', // 또는 'center'로 중앙 정렬
-  },
-  badgeTriangle2: {
-    width: 10, // PNG 실제 크기에 맞게 조정
-    height: 8, // PNG 실제 크기에 맞게 조정
-    marginTop: -6, // 배지와 겹치지 않게 살짝 위로
-    marginLeft: 13, // 배지의 중앙에 오도록 위치 조정
-    resizeMode: 'contain',
-    alignSelf: 'flex-start', // 또는 'center'로 중앙 정렬
-  },
-
-  badgeText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontFamily: 'Roboto',
-  },
-  badgeText2: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontFamily: 'Roboto',
-  },
   progressBarBg: {
     height: 9,
-    marginLeft: 10,
-    marginRight: 10,
     borderRadius: 10,
     backgroundColor: '#F6F6F6',
     overflow: 'hidden',
-    marginTop: 8,
   },
+
   progressBarFill: {
     height: '100%',
     borderRadius: 10,
     backgroundColor: '#5E75FD',
+  },
+
+  progressBubble: {
+    position: 'absolute',
+    bottom: 9 + 4, // 바 위로 살짝 띄우기
+    width: 80,
+    alignItems: 'center',
+  },
+
+  badge2: {
+    backgroundColor: '#5E75FD',
+    borderRadius: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+
+  badgeTriangle2: {
+    width: 10,
+    height: 8,
+    marginTop: -1,
+    resizeMode: 'contain',
+  },
+
+  badgeText2: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    fontFamily: 'Roboto',
   },
 
   /* 추천 챌린지 */
