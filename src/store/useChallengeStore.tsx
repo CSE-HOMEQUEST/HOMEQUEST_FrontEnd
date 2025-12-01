@@ -27,6 +27,9 @@ export type Challenge = {
   currentValue?: number;
   targetValue?: number;
   unit?: string; // '회', '잔', '분' 같은 단위
+
+  // 완료 챌린지 정보 (홈 TodayReportPopup에서 사용)
+  completedAt?: string; // 'YYYY-MM-DD'
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -39,6 +42,15 @@ type State = {
   recCursor: string | null;
   loading: { init: boolean; recMore: boolean; refresh: boolean };
   error?: string | null;
+
+  // 완료된 챌린지 목록
+  completed: Challenge[];
+
+  // 효과 관련(홈 진 glow 등)
+  effects: {
+    // 마지막으로 완료된 주체: 진/동/없음
+    lastCompleted: 'jin' | 'dong' | null;
+  };
 };
 
 type Actions = {
@@ -49,6 +61,9 @@ type Actions = {
   updateProgress: (id: string, pct: number) => void;
   completeChallenge: (id: string) => Promise<void>;
   dismissRecommendation: (id: string) => Promise<void>;
+
+  // 효과 초기화 (홈 glow 끄기)
+  resetEffect: () => void;
 };
 
 const mapFsCategoryToFilter = (fsCategory?: string | null): Filter => {
@@ -73,6 +88,11 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   loading: { init: true, recMore: false, refresh: false },
   error: null,
 
+  completed: [],
+  effects: {
+    lastCompleted: null,
+  },
+
   /* -----------------------------
       필터 변경
   ----------------------------- */
@@ -86,8 +106,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     try {
       console.log('[store.hydrate] START');
 
-      // !! getAllOngoing으로 다 받아오고 -> 나/가족으로 필터링
-      // 0) authStore에서 uid / familyId 가져오기 + Firebase auth fallback
+      // authStore에서 uid / familyId 가져오기 + Firebase auth fallback
       const { user, token } = useAuthStore.getState();
       const fbUser = auth.currentUser;
       const uid = token ?? fbUser?.uid ?? null;
@@ -101,7 +120,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         return;
       }
 
-      // 1) Firestore에서 읽기
+      // Firestore에서 읽기
       const ongoingRaw = await challengeService.getAllOngoing({
         uid,
         familyId,
@@ -113,7 +132,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       console.log('🔥 hydrate | ongoingRaw:', ongoingRaw);
       console.log('🔥 hydrate | recommendedRaw:', recPage.items);
 
-      // 2) 우리 앱 Challenge 타입으로 변환
+      // 우리 앱 Challenge 타입으로 변환
       const ongoing: Challenge[] = ongoingRaw.map((d: any) => {
         const isPersonal = d.mode === 'personal';
 
@@ -296,7 +315,11 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
 
     const state = get();
     const rewardStore = useRewardStore.getState();
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+
+    // 히스토리용(점수 기록): YYYY.MM.DD
+    const todayDot = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+    // 챌린지 완료일(홈 TodayReportPopup용): YYYY-MM-DD
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     if (category === '나') {
       rewardStore.setMyReward({
@@ -307,7 +330,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
       rewardStore.addMyHistory({
         id: Date.now(),
-        date: today,
+        date: todayDot,
         label: title,
         point: rewardPoints,
         type: 'earn',
@@ -320,16 +343,47 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
       rewardStore.addFamilyHistory({
         id: Date.now(),
-        date: today,
+        date: todayDot,
         label: title,
         point: rewardPoints,
         type: 'earn',
       });
     }
 
-    set((s) => ({
-      ongoing: s.ongoing.filter((c) => c.id !== id),
-    }));
+    // ongoing에서 제거 + completed에 추가 + glow 효과 상태 설정
+    set((s) => {
+      const target = s.ongoing.find((c) => c.id === id);
+      const remaining = s.ongoing.filter((c) => c.id !== id);
+
+      const completedItem: Challenge | undefined = target
+        ? {
+            ...target,
+            status: 'completed',
+            rewardPoints,
+            completedAt: todayStr,
+          }
+        : undefined;
+
+      const nextCompleted = completedItem
+        ? [...s.completed, completedItem]
+        : s.completed;
+
+      const lastCompleted =
+        category === '나'
+          ? 'jin'
+          : category === '가족'
+            ? 'dong'
+            : s.effects.lastCompleted;
+
+      return {
+        ongoing: remaining,
+        completed: nextCompleted,
+        effects: {
+          ...s.effects,
+          lastCompleted,
+        },
+      };
+    });
   },
 
   /* -----------------------------
@@ -338,6 +392,18 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   dismissRecommendation: async (id) => {
     set((s) => ({
       recommended: s.recommended.filter((c) => c.id !== id),
+    }));
+  },
+
+  /* -----------------------------
+      효과 초기화 (홈 glow 끄기)
+  ----------------------------- */
+  resetEffect: () => {
+    set((s) => ({
+      effects: {
+        ...s.effects,
+        lastCompleted: null,
+      },
     }));
   },
 }));
