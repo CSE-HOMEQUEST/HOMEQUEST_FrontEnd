@@ -64,7 +64,8 @@ function formatAiAnalysis(data: TodayReportResponse): string {
   if (typeof data.energyHigh === 'boolean') {
     if (data.energyHigh) {
       lines.push(
-        '오늘은 에너지 사용량이 평소보다 조금 높게 나타났어요. 특히 냉방 기기 사용량이 증가한 것으로 보여요.',
+        '오늘은 에너지 사용량이 평소보다 조금 높게 나타났어요.',
+        '특히 냉방 기기 사용량이 증가한 것으로 보여요.',
         '에너지 절약 챌린지를 함께 시도해보는 건 어떨까요?',
       );
     } else {
@@ -433,7 +434,7 @@ function TodayReportPopup({
                 style={styles.challengeIcon}
               />
               <Text style={styles.challengeText}>
-                이번 주의 가족 챌린지 : {'\n'}
+                오늘의 스피드 챌린지 : {'\n'}
                 {weeklyFamily.title} 성공!
               </Text>
               <Text style={styles.point}>
@@ -447,7 +448,7 @@ function TodayReportPopup({
                 style={styles.challengeIcon}
               />
               <Text style={styles.challengeText}>
-                이번 주의 가족 챌린지 : 아직 완료된 챌린지가 없습니다.
+                오늘의 스피드 챌린지 : 아직 완료된 챌린지가 없습니다.
               </Text>
               <Text style={styles.point}>+0p</Text>
             </View>
