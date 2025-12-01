@@ -66,7 +66,7 @@ function formatAiAnalysis(data: TodayReportResponse): string {
     if (data.energyHigh) {
       lines.push(
         '오늘은 에너지 사용량이 평소보다 조금 높게 나타났어요.',
-        '특히 냉방 기기 사용량이 증가한 것으로 보여요.',
+        '특히 난방 기기 사용량이 증가한 것으로 보여요.',
         '에너지 절약 챌린지를 함께 시도해보는 건 어떨까요?',
       );
     } else {
