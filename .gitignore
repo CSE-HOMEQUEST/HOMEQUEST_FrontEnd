@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase Admin SDK private key
+serviceAccountKey.json
+/scripts/update_jinjin.js

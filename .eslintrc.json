@@ -17,6 +17,19 @@
       }
     }
   },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.js"],
+      "env": {
+        "node": true
+      },
+      "parser": "espree",
+      "parserOptions": {
+        "ecmaVersion": 2020,
+        "sourceType": "module"
+      }
+    }
+  ],
   "rules": {
     "import/no-unresolved": "off",
     "import/named": "off",

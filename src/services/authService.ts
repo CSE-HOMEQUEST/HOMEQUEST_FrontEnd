@@ -1,3 +1,4 @@
+// src/services/authService.ts
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -5,18 +6,20 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
-import { auth, db } from '../firebase/firebase';
+import { auth, db } from '../firebase/firebase'; // ✅ 여기 경로는 프로젝트에 맞게
 
 /**
  * 회원가입: Firebase Auth + Firestore /users/{uid}
+ * 닉네임은 온보딩에서 따로 받으므로 여기서는 계정 정보만 저장
  */
 export async function apiSignUp(params: {
   email: string;
   password: string;
-  nickName: string;
   phone?: string;
 }) {
-  const { email, password, nickName, phone } = params;
+  const { email, password, phone } = params;
+
+  console.log('[apiSignUp] start', params);
 
   // 1) Auth에 계정 생성
   const cred: UserCredential = await createUserWithEmailAndPassword(
@@ -25,12 +28,13 @@ export async function apiSignUp(params: {
     password,
   );
   const uid = cred.user.uid;
+  console.log('[apiSignUp] created user', uid);
 
   // 2) Firestore /users/{uid} 문서 생성
   await setDoc(doc(db, 'users', uid), {
-    nickName,
+    nickName: '', // 온보딩에서 채울 예정
     email,
-    avatarUrl: '', // Storage 붙이고 수정
+    avatarUrl: '',
     familyId: null,
     roleInFamily: null,
     orderInChild: null,
@@ -40,6 +44,8 @@ export async function apiSignUp(params: {
     lastLoginAt: serverTimestamp(),
   });
 
+  console.log('[apiSignUp] setDoc done for', uid);
+
   return { uid };
 }
 
@@ -47,6 +53,8 @@ export async function apiSignUp(params: {
  * 로그인: Firebase Auth → Firestore user 프로필 조회
  */
 export async function apiLogin(email: string, password: string) {
+  console.log('[apiLogin] start', email);
+
   // 1) Auth 로그인
   const cred = await signInWithEmailAndPassword(auth, email, password);
   const uid = cred.user.uid;
@@ -65,5 +73,29 @@ export async function apiLogin(email: string, password: string) {
     { merge: true },
   );
 
+  console.log('[apiLogin] success', uid, profile);
+
   return { uid, profile };
+}
+
+/**
+ * 온보딩에서 프로필(닉네임, 역할, 거주지) 업데이트
+ */
+export async function apiUpdateProfile(
+  uid: string,
+  data: {
+    nickName?: string;
+    roleInFamily?: string;
+    location?: string;
+  },
+) {
+  console.log('[apiUpdateProfile] uid =', uid, 'data =', data);
+
+  await setDoc(
+    doc(db, 'users', uid),
+    {
+      ...data,
+    },
+    { merge: true },
+  );
 }

@@ -2,7 +2,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -21,6 +21,95 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useChallengeStore } from '@/src/store/useChallengeStore';
+// ───── AI 추천 응답 타입 ─────
+type ChallengeInfo = {
+  challengeId: string;
+  category: string;
+  mode?: string;
+  freq?: number;
+  durationType?: string;
+  deviceType?: string;
+  progressType?: string;
+  adj_score?: number;
+  score?: number;
+};
+
+type SpeedInfo = {
+  challengeId: string;
+  category: string;
+  userId: string;
+  notificationTime: string; // "17:00:00"
+  weekday: number;
+  freq: number;
+  familyPoints: number;
+  personalPoints: number;
+  adj_score: number;
+  score: number;
+};
+
+type TodayReportResponse = {
+  userId: string;
+  energyHigh?: boolean;
+  main_auc?: number;
+  speed_auc?: number;
+  daily?: ChallengeInfo;
+  monthly?: ChallengeInfo;
+  speed?: SpeedInfo;
+};
+
+// AI 박스 안에 들어갈 한글 문장 생성
+function formatAiAnalysis(data: TodayReportResponse): string {
+  const lines: string[] = [];
+
+  if (typeof data.energyHigh === 'boolean') {
+    if (data.energyHigh) {
+      lines.push(
+        '오늘은 에너지 사용량이 평소보다 조금 높게 나타났어요. 특히 냉방 기기 사용량이 증가한 것으로 보여요.',
+        '에너지 절약 챌린지를 함께 시도해보는 건 어떨까요?',
+      );
+    } else {
+      lines.push(
+        '오늘은 에너지 사용량이 비교적 안정적으로 유지되고 있어요.',
+        '지금처럼만 유지하면 좋은 결과가 나올 거예요. 조금만 더 힘내봐요',
+      );
+    }
+  }
+  return lines.join('\n');
+}
+
+/* ────────────── FastAPI 호출 설정 ────────────── */
+const AI_API_URL = 'https://callai-jb7eegn52q-du.a.run.app';
+
+async function fetchTodayReportFromAPI(userId: string): Promise<string> {
+  try {
+    const res = await fetch(AI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId, // 예: 'user_4'
+        top_k: 3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.log('[AI API ERROR]', res.status, errorText);
+      throw new Error(errorText || `status ${res.status}`);
+    }
+
+    const data: TodayReportResponse = await res.json();
+    console.log('[AI API RAW DATA]', data);
+
+    // 여기서 JSON 전체를 문자열로 찍던 코드 대신,
+    // 우리가 만든 formatAiAnalysis 사용
+    return formatAiAnalysis(data);
+  } catch (err) {
+    console.error('[fetchTodayReportFromAPI] error:', err);
+    throw err;
+  }
+}
 
 /* ────────────── Header ────────────── */
 function Header() {
@@ -224,27 +313,40 @@ function HelpIcons({ onReportPress }: { onReportPress: () => void }) {
 function TodayReportPopup({
   visible,
   onClose,
+  aiText,
+  aiLoading,
+  aiError,
+  onRetry,
 }: {
   visible: boolean;
   onClose: () => void;
+  aiText: string;
+  aiLoading: boolean;
+  aiError: string | null;
+  onRetry: () => void;
 }) {
   const completed = useChallengeStore((s) => s.completed);
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
-  //날짜 계산 (오늘, 이번주, 이번달 챌린지 표시를 위해)
+
+  // 날짜 계산 (오늘, 이번주, 이번달 챌린지 표시를 위해)
   const year = now.getFullYear();
   const month = now.getMonth();
+
   const startOfWeek = new Date(now);
   startOfWeek.setDate(now.getDate() - now.getDay());
   startOfWeek.setHours(0, 0, 0, 0);
+
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
   endOfWeek.setHours(23, 59, 59, 999);
+
   const toDate = (d?: string) => (d ? new Date(d) : null);
+
   // 이번 달 가족 챌린지 중 가장 최근 1개
   const monthlyFamily = [...completed]
     .filter((c) => {
-      if (c.category !== '가족' || !c.completedAt) return false;
+      if (c.audience !== '가족' || !c.completedAt) return false;
       const d = toDate(c.completedAt);
       if (!d) return false;
       return d.getFullYear() === year && d.getMonth() === month;
@@ -254,7 +356,7 @@ function TodayReportPopup({
   // 이번 주 가족 챌린지 중 가장 최근 1개
   const weeklyFamily = [...completed]
     .filter((c) => {
-      if (c.category !== '가족' || !c.completedAt) return false;
+      if (c.audience !== '가족' || !c.completedAt) return false;
       const d = toDate(c.completedAt);
       if (!d) return false;
       return d >= startOfWeek && d <= endOfWeek;
@@ -263,8 +365,19 @@ function TodayReportPopup({
 
   // 오늘 개인 챌린지 중 가장 최근 1개
   const todayPersonal = [...completed]
-    .filter((c) => c.category === '나' && c.completedAt === todayStr)
+    .filter((c) => c.audience === '나' && c.completedAt === todayStr)
     .slice(-1)[0];
+
+  // AI 텍스트 렌더링
+  const renderAiText = () => {
+    if (aiLoading) {
+      return 'AI 패턴 분석을 불러오는 중입니다...';
+    }
+    if (aiError) {
+      return `${aiError}\n\n다시 시도해보세요.`;
+    }
+    return aiText;
+  };
 
   return (
     <Modal transparent animationType="fade" visible={visible}>
@@ -275,10 +388,14 @@ function TodayReportPopup({
           {/* AI 분석 */}
           <View style={styles.aiBox}>
             <Text style={styles.aiLabel}>AI 패턴 분석 :</Text>
-            <Text style={styles.aiText}>
-              누나는 월요일마다 늦게 집에 들어오네요.{'\n'}
-              아침 설거지로 가사 챌린지를 미리 수행해보는 건{'\n'}어떨까요?
-            </Text>
+            <Text style={styles.aiText}>{renderAiText()}</Text>
+
+            {/* 에러일 때만 재시도 버튼 노출 (선택사항) */}
+            {aiError && (
+              <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+                <Text style={styles.retryText}>다시 시도</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.line2} />
@@ -422,6 +539,33 @@ function BottomTabBar() {
 export default function Home() {
   const [reportVisible, setReportVisible] = useState(false);
 
+  const [aiText, setAiText] = useState(
+    '오늘 하루 데이터 기반으로 패턴을 분석하고 있어요.',
+  );
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const loadTodayReport = async () => {
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const text = await fetchTodayReportFromAPI('user_4');
+      setAiText(text);
+    } catch {
+      throw new Error('AI 요청 중 오류 발생');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // 모달이 열릴 때마다 AI 분석 새로 불러오기
+  useEffect(() => {
+    if (reportVisible) {
+      loadTodayReport();
+    }
+  }, [reportVisible]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <Header />
@@ -437,6 +581,10 @@ export default function Home() {
       <TodayReportPopup
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
+        aiText={aiText}
+        aiLoading={aiLoading}
+        aiError={aiError}
+        onRetry={loadTodayReport}
       />
     </SafeAreaView>
   );
@@ -675,4 +823,17 @@ const styles = StyleSheet.create({
   },
   tabButton: { paddingVertical: 8, paddingHorizontal: 12 },
   tabIcon: { width: 50, height: 50 },
+
+  retryButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#EFEFEF',
+  },
+  retryText: {
+    fontSize: 12,
+    color: '#333333',
+  },
 });

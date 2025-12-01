@@ -1,48 +1,32 @@
-// src/store/useChallengeStore.ts
+// src/store/useChallengeStore.tsx
 import { create } from 'zustand';
 
-import { useRewardStore } from '../store/useRewardStore';
+import { challengeService } from '@/src/services/challengeService';
+import { useRewardStore } from '@/src/store/useRewardStore';
 
 /** 공통 타입 */
-export type Filter = '전체' | '절약' | '가사' | '헬스' | '나' | '가족';
+
+// 누가 하는지
+export type Audience = '나' | '가족';
+
+// 어떤 종류인지 (카테고리 필터)
+export type Filter = '전체' | '절약' | '가사' | '헬스';
 
 export type Challenge = {
   id: string;
+  progressId?: string;
   title: string;
-  category: Filter; // ← 여기로 개인/가족 구분
+  audience: Audience;
+  category: Filter;
   status: 'ongoing' | 'recommended' | 'completed' | 'failed';
   progressPct?: number;
   rewardPoints?: number;
   duration?: number;
   completedAt?: string;
+  period?: 'daily' | 'weekly' | 'monthly' | 'relay';
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
-
-/** 임시 API */
-const api = {
-  getOngoing: async (): Promise<Challenge[]> =>
-    new Promise((r) => setTimeout(() => r([]), 150)),
-
-  getRecommended: async ({
-    filter: _filter,
-    cursor: _cursor,
-  }: {
-    filter: Filter;
-    cursor?: string | null;
-  }): Promise<Page<Challenge>> =>
-    new Promise((r) => setTimeout(() => r({ items: [], cursor: null }), 150)),
-
-  startChallenge: async (_: { id: string }) =>
-    new Promise((r) => setTimeout(r, 150)),
-
-  completeChallenge: async (_: { id: string }) =>
-    new Promise<{ rewardPoints: number }>((r) =>
-      setTimeout(() => r({ rewardPoints: 40 }), 150),
-    ),
-
-  dismiss: async (_: { id: string }) => new Promise((r) => setTimeout(r, 100)),
-};
 
 /** 상태 정의 */
 type State = {
@@ -92,16 +76,70 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   ----------------------------- */
   hydrate: async () => {
     set((s) => ({ loading: { ...s.loading, init: true }, error: null }));
+
     try {
-      const ongoing = await api.getOngoing();
-      const recPage = await api.getRecommended({
-        filter: get().currentFilter,
+      // 1) Firestore에서 진행중 챌린지 읽기
+      const ongoingRaw = await challengeService.getOngoing();
+
+      console.log('🔥 hydrate | ongoingRaw:', ongoingRaw);
+
+      const ongoing: Challenge[] = ongoingRaw.map((d: any) => {
+        const isPersonal = d.mode === 'personal';
+
+        // 🔹 진행률 계산용 값
+        const cur = typeof d.currentValue === 'number' ? d.currentValue : 0;
+        const target =
+          typeof d.targetValue === 'number' && d.targetValue > 0
+            ? d.targetValue
+            : 1;
+
+        const progressPct = Math.min(100, Math.floor((cur / target) * 100));
+        console.log(
+          '🔥 hydrate map check',
+          ongoingRaw.map((d: any) => ({
+            id: d.challengeId,
+            cur: d.currentValue,
+            target: d.targetValue,
+            rawPct: d.progressPct,
+          })),
+        );
+
+        // 🔹 Firestore category(saving/chores/health) → 화면용 필터(절약/가사/헬스)
+        const categoryMap = (cat: string | undefined): Filter => {
+          switch (cat) {
+            case 'saving':
+              return '절약';
+            case 'chores':
+              return '가사';
+            case 'health':
+              return '헬스';
+            default:
+              return '전체';
+          }
+        };
+
+        return {
+          id: d.challengeId,
+          progressId: d.progressId,
+          title: d.challengeTitle ?? d.title ?? '',
+          audience: isPersonal ? '나' : '가족',
+          category: categoryMap(d.category),
+          period:
+            (d.durationType as 'daily' | 'weekly' | 'monthly' | 'relay') ??
+            'daily',
+          status: 'ongoing',
+          progressPct,
+          rewardPoints:
+            d.rewardPoints ??
+            (isPersonal ? d.totalPersonalPoints : d.totalFamilyPoints) ??
+            0,
+        };
       });
+
+      console.log('🔥 hydrate | mapped ongoing:', ongoing);
 
       set((s) => ({
         ongoing,
-        recommended: recPage.items,
-        recCursor: recPage.cursor ?? null,
         loading: { ...s.loading, init: false },
       }));
     } catch (e: any) {
@@ -120,15 +158,39 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     if (cur === null) return;
 
     set((s) => ({ loading: { ...s.loading, recMore: true } }));
-
     try {
-      const page = await api.getRecommended({
+      const page = await challengeService.getRecommended({
         filter: get().currentFilter,
         cursor: cur,
       });
 
+      const more: Challenge[] = page.items.map((dto: any) => {
+        const audience: Audience = dto.mode === 'personal' ? '나' : '가족';
+
+        let category: Filter = '전체';
+        if (
+          dto.category === '절약' ||
+          dto.category === '가사' ||
+          dto.category === '헬스'
+        ) {
+          category = dto.category;
+        }
+
+        return {
+          id: dto.id,
+          title: dto.title,
+          audience,
+          category,
+          status: 'recommended',
+          rewardPoints:
+            dto.mode === 'personal'
+              ? dto.basePersonalPoints
+              : dto.baseFamilyPoints,
+        };
+      });
+
       set((s) => ({
-        recommended: [...s.recommended, ...page.items],
+        recommended: [...s.recommended, ...more],
         recCursor: page.cursor ?? null,
         loading: { ...s.loading, recMore: false },
       }));
@@ -144,7 +206,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       챌린지 시작
   ----------------------------- */
   startChallenge: async (id) => {
-    await api.startChallenge({ id });
+    await challengeService.startChallenge(id);
 
     set((s) => {
       const rec = s.recommended.filter((c) => c.id !== id);
@@ -168,7 +230,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   },
 
   /* -----------------------------
-      진행률 업데이트
+      진행률 업데이트 (프론트 상태만)
   ----------------------------- */
   updateProgress: (id, pct) =>
     set((s) => ({
@@ -179,54 +241,49 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
 
   /* -----------------------------
       챌린지 완료 처리
-      (여기서 개인/가족 리워드 & 타임라인 분리됨)
   ----------------------------- */
   completeChallenge: async (id) => {
+    const res = await challengeService.completeChallenge(id);
+    const { rewardPoints, category, title } = res;
+
+    const actor: Audience = category === '나' ? '나' : '가족';
+
     const state = get();
-    const target = state.ongoing.find((c) => c.id === id);
-    if (!target) return;
-
-    await api.completeChallenge({ id });
-
-    const reward = target.rewardPoints ?? 0;
     const rewardStore = useRewardStore.getState();
-
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
     const completedAt = new Date().toISOString().slice(0, 10);
 
-    /* -----------------------------
-          개인 챌린지인 경우
-    ----------------------------- */
-    if (target.category === '나') {
+    const target = state.ongoing.find((c) => c.id === id);
+    if (!target) {
+      console.warn('completeChallenge: target not found for id', id);
+      return;
+    }
+
+    if (actor === '나') {
       rewardStore.setMyReward({
-        currentPoint: rewardStore.myPoint + reward,
+        currentPoint: rewardStore.myPoint + rewardPoints,
         expectedPoint: state.ongoing
           .filter((c) => c.id !== id)
           .reduce((s, c) => s + (c.rewardPoints ?? 0), 0),
       });
-
       rewardStore.addMyHistory({
         id: Date.now(),
         date: today,
-        label: target.title,
-        point: reward,
+        label: title,
+        point: rewardPoints,
         type: 'earn',
       });
-    } else if (target.category === '가족') {
-      /* -----------------------------
-          가족 챌린지인 경우
-    ----------------------------- */
+    } else if (actor === '가족') {
       rewardStore.setFamilyReward({
-        total: rewardStore.familyTotal + reward,
+        total: rewardStore.familyTotal + rewardPoints,
         weeklyRank: rewardStore.weeklyRank,
         monthlyRank: rewardStore.monthlyRank,
       });
-
       rewardStore.addFamilyHistory({
         id: Date.now(),
         date: today,
-        label: target.title,
-        point: reward,
+        label: title,
+        point: rewardPoints,
         type: 'earn',
       });
     }
@@ -245,7 +302,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       ongoing: s.ongoing.filter((c) => c.id !== id),
     }));
 
-    if (target.category === '나' || target.category === '가족') {
+    if (target.audience === '나' || target.audience === '가족') {
       set((s) => ({
         effects: {
           ...s.effects,
@@ -259,7 +316,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       추천 제거(dismiss)
   ----------------------------- */
   dismissRecommendation: async (id) => {
-    await api.dismiss({ id });
     set((s) => ({
       recommended: s.recommended.filter((c) => c.id !== id),
     }));

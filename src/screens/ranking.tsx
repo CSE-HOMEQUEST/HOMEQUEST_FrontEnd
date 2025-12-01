@@ -1,37 +1,25 @@
 // src/screens/Ranking.tsx
 import { router } from 'expo-router';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { doc, updateDoc, increment } from 'firebase/firestore';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
   Animated,
   Easing,
-  LayoutAnimation,
-  Platform,
-  UIManager,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
-const rankingSwapLayout = {
-  duration: 750, // 전체 애니메이션 길이
-  create: {
-    type: LayoutAnimation.Types.easeInEaseOut,
-    property: LayoutAnimation.Properties.opacity,
-  },
-  update: {
-    // 핵심: 위치 변경은 spring 으로
-    type: LayoutAnimation.Types.spring,
-    springDamping: 0.8,
-  },
-  delete: {
-    type: LayoutAnimation.Types.easeInEaseOut,
-    property: LayoutAnimation.Properties.opacity,
-  },
-} as const;
+import {
+  RankingList,
+  RankingRow as RankingListRow,
+} from '../components/RankingList';
+import { db } from '../firebase/firebase';
+import { rankingService } from '../services/rankingService';
 
 /* ========== 공통 로깅 함수 ========== */
 function logRankingEvent(event: string, payload?: any) {
@@ -74,7 +62,6 @@ type MyRankingCardProps = {
 };
 
 function MyRankingCard({ familyName, rank }: MyRankingCardProps) {
-  // 순위가 아직 없으면 -위로 표시
   const rankText = rank != null ? `${rank}위` : '-위';
 
   return (
@@ -149,28 +136,32 @@ function RankingInfo({ onPressInfo }: RankingInfoProps) {
 
 type RandomBoxProps = {
   onPress: () => void;
+  // 0 ~ 1 사이의 진행도
+  progress: Animated.Value;
+  // 랭킹 상승 시 잠깐 보여줄 텍스트 (예: "+1")
+  gainText?: string | null;
+  gainAnim?: Animated.Value;
 };
 
-function RandomBox({ onPress }: RandomBoxProps) {
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 20000, // 20초 동안 천천히 차오름
-        easing: Easing.linear,
-        useNativeDriver: false, // width라서 false
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [progress]);
-
+function RandomBox({ onPress, progress, gainText, gainAnim }: RandomBoxProps) {
   const fillWidth = progress.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
+
+  const gainOpacity = gainAnim
+    ? gainAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 0],
+      })
+    : 0;
+
+  const gainTranslateY = gainAnim
+    ? gainAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -12],
+      })
+    : 0;
 
   return (
     <TouchableOpacity style={styles.randomBox} onPress={onPress}>
@@ -178,12 +169,29 @@ function RandomBox({ onPress }: RandomBoxProps) {
         source={require('../../assets/images/RandomBox.png')}
         style={styles.randomBoxImage}
       />
+
       <View style={styles.randomGauge}>
         <Animated.View style={[styles.randomGaugeFill, { width: fillWidth }]} />
       </View>
+
+      {gainText && gainAnim && (
+        <Animated.Text
+          style={[
+            styles.randomGainText,
+            {
+              opacity: gainOpacity,
+              transform: [{ translateY: gainTranslateY }],
+            },
+          ]}
+        >
+          {gainText}
+        </Animated.Text>
+      )}
     </TouchableOpacity>
   );
 }
+
+/* ========== 보상 모달 ========== */
 
 type RewardModalProps = {
   point: number;
@@ -217,10 +225,8 @@ type TopPlaceProps = {
   place: 1 | 2 | 3;
   familyName: string;
   scoreText: string;
-
   rank: number;
   prevRank: number;
-
   onPress?: () => void;
   sharedAnim?: Animated.Value;
 };
@@ -244,8 +250,6 @@ function TopPlaceCard({
   const change: 'none' | 'up' | 'down' =
     prevRank > rank ? 'up' : prevRank < rank ? 'down' : 'none';
 
-  const statusType = change;
-
   const statusText =
     change === 'up'
       ? `${prevRank - rank}위상승`
@@ -254,9 +258,9 @@ function TopPlaceCard({
         : '-';
 
   const statusIconSource =
-    statusType === 'up'
+    change === 'up'
       ? require('../../assets/images/up.png')
-      : statusType === 'down'
+      : change === 'down'
         ? require('../../assets/images/down.png')
         : null;
 
@@ -268,7 +272,6 @@ function TopPlaceCard({
     >
       <View style={styles.topCardFrame} />
 
-      {/* 메달 본체 펄스 */}
       <BlinkImage
         source={medalSource}
         style={styles.medalIcon}
@@ -291,7 +294,7 @@ function TopPlaceCard({
 /* ========== 반짝이는 효과 ========== */
 
 function useBlink(options?: {
-  sharedAnim?: Animated.Value; // 추가: 외부 애니메이션 쓰면 타이밍 동기화
+  sharedAnim?: Animated.Value;
   duration?: number;
   minOpacity?: number;
   maxOpacity?: number;
@@ -311,7 +314,7 @@ function useBlink(options?: {
   const anim = sharedAnim ?? localAnim;
 
   useEffect(() => {
-    if (sharedAnim) return; // sharedAnim 쓰면 여기서 loop 안 돌림
+    if (sharedAnim) return;
 
     const loop = Animated.loop(
       Animated.sequence([
@@ -368,12 +371,12 @@ function BlinkImage({
   );
 }
 
-/* ========== 아래 랭킹 리스트 ========== */
+/* ========== 랭킹 데이터 타입 ========== */
 
 type RankingRaw = {
   id: string;
   familyName: string;
-  score: number; // 백엔드에서 이런 숫자만 내려온다고 가정
+  score: number;
 };
 
 type RankingRow = RankingRaw & {
@@ -381,17 +384,6 @@ type RankingRow = RankingRaw & {
   prevRank: number;
 };
 
-const rankingRaw: RankingRaw[] = [
-  { id: 'minji', familyName: '민지네', score: 47195 },
-  { id: 'fairy', familyName: '청소요정들', score: 31784 },
-  { id: 'homeq', familyName: '잠안자고홈퀘', score: 20331 },
-  { id: 'first', familyName: '오늘도1등각', score: 17228 },
-  { id: 'run', familyName: '달리는중', score: 16742 },
-  { id: 'gogo', familyName: '가보자고', score: 15369 },
-  { id: 'momdad', familyName: '엄마아빠최고', score: 14205 },
-];
-
-// score 기준으로 정렬 + rank/prevRank 계산
 function computeRanks(
   raw: RankingRaw[],
   prevMap?: Record<string, number>,
@@ -402,98 +394,6 @@ function computeRanks(
     const prevRank = prevMap?.[r.id] ?? newRank;
     return { ...r, rank: newRank, prevRank };
   });
-}
-
-// prevRank vs rank로 변화 계산
-function getChange(row: RankingRow): 'none' | 'up' | 'down' {
-  if (row.prevRank > row.rank) return 'up';
-  if (row.prevRank < row.rank) return 'down';
-  return 'none';
-}
-
-type RankingAllProps = {
-  rows: RankingRow[];
-  onRowPress: (row: RankingRow) => void;
-  sharedAnim?: Animated.Value;
-  flashAnim: Animated.Value;
-};
-
-function RankingAll({
-  rows,
-  onRowPress,
-  sharedAnim,
-  flashAnim,
-}: RankingAllProps) {
-  return (
-    <View style={styles.rankingAll}>
-      {rows.map((row) => {
-        const change = getChange(row);
-        const isUpRow = change === 'up';
-        const isDownRow = change === 'down';
-
-        let bgStyle = styles.rankRow;
-        if (isUpRow) bgStyle = styles.rankRowUp;
-        if (isDownRow) bgStyle = styles.rankRowDown;
-
-        const changeIcon = isUpRow
-          ? require('../../assets/images/up.png')
-          : isDownRow
-            ? require('../../assets/images/down.png')
-            : null;
-
-        return (
-          <View
-            key={row.id}
-            style={[styles.rankRowBase, { position: 'relative' }]}
-          >
-            {(isUpRow || isDownRow) && (
-              <View style={[StyleSheet.absoluteFill, bgStyle]} />
-            )}
-
-            {(isUpRow || isDownRow) && (
-              <Animated.View
-                style={[
-                  StyleSheet.absoluteFill,
-                  bgStyle,
-                  { opacity: flashAnim },
-                ]}
-              />
-            )}
-
-            <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-              activeOpacity={0.8}
-              onPress={() => onRowPress(row)}
-            >
-              <View style={styles.rankRowLeft}>
-                <Text style={styles.rankNumberText}>{row.rank}</Text>
-
-                {changeIcon ? (
-                  <BlinkImage
-                    source={changeIcon}
-                    style={styles.rankChangeIcon}
-                    sharedAnim={sharedAnim}
-                  />
-                ) : (
-                  <Text style={styles.rankChangeText}>-</Text>
-                )}
-              </View>
-
-              <View style={styles.rankRowCenter}>
-                <Text style={styles.rankFamilyName}>{row.familyName}</Text>
-              </View>
-
-              <View style={styles.rankRowRight}>
-                <Text style={styles.rankScoreText}>
-                  +{row.score.toLocaleString()}p
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        );
-      })}
-    </View>
-  );
 }
 
 /* ========== 하단 탭 바 ========== */
@@ -548,7 +448,6 @@ function BottomTabBar() {
         activeOpacity={0.7}
         onPress={() => {
           logRankingEvent('tab_click', 'Ranking');
-          // 이미 Ranking 탭이라 이동은 필요 없음
         }}
       >
         <Image
@@ -572,61 +471,112 @@ export function Ranking() {
   } | null>(null);
 
   const [showReward, setShowReward] = useState(false);
+  const [rows, setRows] = useState<RankingListRow[]>([]);
 
-  const [rows, setRows] = useState<RankingRow[]>(computeRanks(rankingRaw));
+  const [highlightedFamilies, setHighlightedFamilies] = useState<
+    Record<string, 'up' | 'down'>
+  >({});
+
+  // 최근에 부스터가 점수 올린 가족들(id만 저장)
+  const boostedIdsRef = useRef<Record<string, boolean>>({});
+
+  const rowsRef = useRef<RankingRow[]>([]);
 
   const sharedBlink = useRef(new Animated.Value(0)).current;
 
-  const flashAnim = useRef(new Animated.Value(0)).current;
-
-  const myFamilyId = 'homeq';
+  const myFamilyId = 'fam_jinjin';
   const myRow = rows.find((r) => r.id === myFamilyId);
 
-  const triggerBackgroundFlash = useCallback(() => {
-    flashAnim.setValue(0);
+  // 추가: 상자깡 게이지 진행도 (0 ~ 1)
+  const [boxProgress, setBoxProgress] = useState(0);
+  const boxProgressAnim = useRef(new Animated.Value(0)).current;
 
-    Animated.sequence([
-      Animated.timing(flashAnim, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [flashAnim]);
+  // 추가: 내 이전 랭킹 저장용
+  const prevMyRankRef = useRef<number | null>(null);
 
-  const applyBackendScores = (newRaw: RankingRaw[]) => {
-    setRows((prev) => {
-      const prevRankMap: Record<string, number> = {};
-      prev.forEach((p) => {
-        prevRankMap[p.id] = p.rank;
+  // 추가: +1 텍스트용 상태/애니메이션
+  const [gainText, setGainText] = useState<string | null>(null);
+  const gainAnim = useRef(new Animated.Value(0)).current;
+
+  // boxProgress 상태를 Animated.Value로 부드럽게 반영
+  useEffect(() => {
+    Animated.timing(boxProgressAnim, {
+      toValue: boxProgress,
+      duration: 400,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: false, // width 애니메이션이라 false
+    }).start();
+  }, [boxProgress, boxProgressAnim]);
+
+  const triggerRankGain = useCallback(
+    (diff: number) => {
+      if (diff <= 0) return;
+
+      const text = diff === 1 ? '+1' : `+${diff}`;
+      setGainText(text);
+
+      gainAnim.setValue(0);
+      Animated.timing(gainAnim, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        setGainText(null);
+      });
+    },
+    [gainAnim],
+  );
+
+  // rows 변경 시 내 랭킹 변화 감지 → 랭킹 오르면 게이지/텍스트 업데이트
+  useEffect(() => {
+    const currentMyRow = rows.find((r) => r.id === myFamilyId);
+    if (!currentMyRow) return;
+
+    const prevRank = prevMyRankRef.current;
+    const currentRank = currentMyRow.rank;
+
+    if (prevRank != null && currentRank < prevRank) {
+      // 랭킹이 올랐을 때 (예: 5위 → 4위)
+      const diff = prevRank - currentRank;
+
+      // 게이지 조금씩 차오르게 (랭킹 1칸 당 0.1씩 증가 예시)
+      setBoxProgress((prev) => {
+        const next = Math.min(prev + 0.3 * diff, 1);
+
+        // 게이지가 막 꽉 찬 순간
+        if (prev < 1 && next >= 1) {
+          console.log('[Ranking] 게이지 100% 도달 → 자동 상자깡!');
+          // 자동으로 보상 모달 열기
+          setShowReward(true);
+
+          if (prev < 1 && next >= 1) {
+            setShowReward(true);
+
+            // 게이지 자동 초기화
+            setTimeout(() => {
+              setBoxProgress(0);
+            }, 300); // 모달 표시 직후 약간 딜레이 주는 게 깔끔함
+          }
+        }
+
+        return next;
       });
 
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      // +1 텍스트 애니메이션
+      triggerRankGain(diff);
+    }
 
-      return computeRanks(newRaw, prevRankMap);
-    });
-  };
+    // 현재 랭킹을 다음 비교를 위해 저장
+    prevMyRankRef.current = currentRank;
+  }, [rows, myFamilyId, triggerRankGain]);
 
-  // 1) sharedBlink 루프 + screen_view (한 번만)
+  // rows가 바뀔 때마다 ref에도 최신값 저장
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  // 메달 반짝임
   useEffect(() => {
     logRankingEvent('screen_view');
 
@@ -650,39 +600,208 @@ export function Ranking() {
     return () => loop.stop();
   }, [sharedBlink]);
 
-  useEffect(() => {
-    triggerBackgroundFlash();
-  }, [triggerBackgroundFlash]);
+  // Firestore → rows 반영 + 하이라이트 결정
+  const applyBackendScores = useCallback((newRaw: RankingRaw[]) => {
+    // 직전 렌더의 rows (rowsRef에서 가져옴)
+    const prevRows = rowsRef.current;
 
-  // 2) 안드로이드 LayoutAnimation enable
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      UIManager.setLayoutAnimationEnabledExperimental?.(true);
-    }
-  }, []);
+    // 이전 rank 맵
+    const prevRankMap: Record<string, number> = {};
+    prevRows.forEach((p) => {
+      prevRankMap[p.id] = p.rank;
+    });
 
-  // 3) 진입 직후 자리 재정렬 + 애니메이션
-  useEffect(() => {
-    const t = setTimeout(() => {
-      LayoutAnimation.configureNext(rankingSwapLayout);
-      setRows((prev) => [...prev].sort((a, b) => a.rank - b.rank));
-    }, 80);
+    // 새 랭킹 계산
+    const next = computeRanks(newRaw, prevRankMap);
 
-    return () => clearTimeout(t);
-  }, []);
+    const highlights: Record<string, 'up' | 'down'> = {};
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      // 테스트용: homeq 점수 +20000
-      const newRaw = rankingRaw.map((r) => {
-        if (r.id === 'homeq') return { ...r, score: r.score + 20000 };
-        return r;
+    // 1) 부스터가 올린 가족들 먼저 처리
+    const boostedIds = Object.keys(boostedIdsRef.current);
+
+    if (boostedIds.length > 0) {
+      boostedIds.forEach((id) => {
+        const before = prevRankMap[id];
+        const row = next.find((r) => r.id === id);
+        if (!row || before == null) return;
+
+        const after = row.rank;
+        if (before === after) return;
+
+        highlights[id] = after < before ? 'up' : 'down';
       });
 
-      applyBackendScores(newRaw);
-    }, 5000);
+      // 한 번 처리한 부스터 정보는 비우기
+      boostedIdsRef.current = {};
+    } else {
+      // 2) 부스터 정보가 없을 때: 기본 랭킹 변화 기반 하이라이트 (fallback)
+      next.forEach((row) => {
+        const before = prevRankMap[row.id] ?? row.rank;
+        const after = row.rank;
 
-    return () => clearInterval(id);
+        if (before === after) return;
+
+        const diff = before - after; // +면 위로, -면 아래로
+        // 이동 거리가 너무 크면 무시 (1~2칸만 하이라이트)
+        if (Math.abs(diff) <= 3) {
+          highlights[row.id] = diff > 0 ? 'up' : 'down';
+        }
+      });
+    }
+
+    // 확정된 하이라이트 적용
+    setHighlightedFamilies(highlights);
+    setRows(next);
+  }, []);
+
+  // Ranking 컴포넌트 안
+
+  const isInitialLoadRef = useRef(true); // 첫 스냅샷은 그냥 고정 화면용
+
+  useEffect(() => {
+    console.log('[Ranking] subscribeFamiliesRanking with reset start');
+
+    let unsubscribe: (() => void) | null = null;
+
+    // dev에서만 실행할 초기화 함수 (네가 올린 코드 그대로)
+    const resetFamilies = async () => {
+      const defaults: Record<string, number> = {
+        fam_002: 1000,
+        fam_003: 1120,
+        fam_004: 1230,
+        fam_005: 1350,
+        fam_006: 1470,
+        fam_007: 1690,
+        fam_008: 1810,
+        fam_009: 1940,
+        fam_010: 2000,
+        fam_jinjin: 1300,
+      };
+
+      for (const [id, score] of Object.entries(defaults)) {
+        const ref = doc(db, 'families', id);
+        await updateDoc(ref, { totalFamilyPoints: score });
+      }
+    };
+
+    const init = async () => {
+      // 1) dev 모드면 먼저 초기화 끝내고
+      if (__DEV__) {
+        try {
+          console.log('[Ranking] resetFamilies start');
+          await resetFamilies();
+          console.log('[Ranking] resetFamilies done');
+        } catch (e) {
+          console.log('[Ranking] resetFamilies error', e);
+        }
+      }
+
+      // 2) 그 다음에 구독 시작
+      unsubscribe = rankingService.subscribeFamiliesRanking((families) => {
+        const newRaw: RankingRaw[] = families.map((f) => ({
+          id: f.id,
+          familyName: f.familyName,
+          score: f.totalFamilyPoints,
+        }));
+
+        console.log('[Ranking] families from Firestore =', newRaw);
+
+        // 첫 스냅샷은 "그냥 정렬된 화면"만 보여주고, 애니메이션/랭킹변화 로직은 건너뛴다
+        if (isInitialLoadRef.current) {
+          const initialRows = computeRanks(newRaw); // prevRank 없이 깔끔 정렬
+          setRows(initialRows);
+          isInitialLoadRef.current = false;
+          return;
+        }
+
+        // 그 다음부터는 기존 로직대로 (prevRank 이용하는 애니메이션 포함)
+        applyBackendScores(newRaw);
+      });
+    };
+
+    init();
+
+    return () => {
+      console.log('[Ranking] unsubscribe ranking');
+      if (unsubscribe) unsubscribe();
+    };
+  }, [applyBackendScores]);
+
+  // 랜덤 가족 랭킹변화 로직
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    const intervalId = setInterval(async () => {
+      const list = rowsRef.current;
+      if (!list || list.length === 0) return;
+
+      const randomIndex = Math.floor(Math.random() * list.length);
+      const target = list[randomIndex];
+      if (!target?.id) return;
+
+      // 부스터가 올린 가족 id 기록
+      boostedIdsRef.current[target.id] = true;
+
+      try {
+        const familyRef = doc(db, 'families', target.id);
+        await updateDoc(familyRef, {
+          totalFamilyPoints: increment(200), // 1초짜리면 200
+        });
+      } catch (e) {
+        console.log('[DevBoost] fast booster error', e);
+      }
+    }, 700);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  console.log(
+    'rows in UI >>>',
+    rows.map((r) => ({
+      id: r.id,
+      name: r.familyName,
+      score: r.score,
+      rank: r.rank,
+      prevRank: r.prevRank,
+    })),
+  );
+  // 랭킹변화 로직
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    console.log('[DevBoost] start fast booster (1.5s)');
+
+    const intervalId = setInterval(async () => {
+      const list = rowsRef.current;
+      if (!list || list.length === 0) return;
+
+      const randomIndex = Math.floor(Math.random() * list.length);
+      const target = list[randomIndex];
+      if (!target?.id) return;
+
+      // 부스터가 올린 가족 id 기록
+      boostedIdsRef.current[target.id] = true;
+
+      try {
+        const familyRef = doc(db, 'families', target.id);
+        await updateDoc(familyRef, {
+          totalFamilyPoints: increment(100),
+        });
+
+        console.log(
+          '[DevBoost] [FAST] +100 to',
+          target.familyName,
+          `(id: ${target.id})`,
+        );
+      } catch (e) {
+        console.log('[DevBoost] fast booster error', e);
+      }
+    }, 700); // 1.5초
+
+    return () => {
+      clearInterval(intervalId);
+      console.log('[DevBoost] stop fast booster');
+    };
   }, []);
 
   return (
@@ -708,18 +827,22 @@ export function Ranking() {
                 setShowTooltip(true);
               }}
             />
-            <RandomBox onPress={() => setShowReward(true)} />
+            <RandomBox
+              onPress={() => setShowReward(true)}
+              progress={boxProgressAnim}
+              gainText={gainText}
+              gainAnim={gainAnim}
+            />
           </View>
+
           <View style={styles.top3Row}>
             {(() => {
-              // rows는 이미 score 기준으로 정렬+rank 계산된 상태
               const first = rows.find((r) => r.rank === 1);
               const second = rows.find((r) => r.rank === 2);
               const third = rows.find((r) => r.rank === 3);
 
               return (
                 <>
-                  {/* 2등(은) 왼쪽 */}
                   <View style={styles.secondPlaceWrapper}>
                     {second && (
                       <TopPlaceCard
@@ -742,7 +865,6 @@ export function Ranking() {
                     )}
                   </View>
 
-                  {/* 1등(금) 가운데 */}
                   <View style={styles.firstPlaceWrapper}>
                     {first && (
                       <TopPlaceCard
@@ -765,7 +887,6 @@ export function Ranking() {
                     )}
                   </View>
 
-                  {/* 3등(동) 오른쪽 */}
                   <View style={styles.thirdPlaceWrapper}>
                     {third && (
                       <TopPlaceCard
@@ -792,16 +913,14 @@ export function Ranking() {
             })()}
           </View>
 
-          <RankingAll
+          <RankingList
             rows={rows}
-            sharedAnim={sharedBlink}
-            flashAnim={flashAnim}
-            onRowPress={(row) => logRankingEvent('rank_row_press', row)}
+            highlightedFamilies={highlightedFamilies}
+            onPressRow={(row) => logRankingEvent('rank_row_press', row)}
           />
         </View>
       </ScrollView>
 
-      {/* ? 눌렀을 때 뜨는 말풍선 */}
       {showTooltip && tooltipPos && (
         <View style={styles.tooltipBackdrop}>
           <View
@@ -968,8 +1087,8 @@ const styles = StyleSheet.create({
   myRankingNumber: {
     fontSize: 20,
     fontFamily: 'Roboto',
-    fontWeight: '400',
-    color: '#000000',
+    fontWeight: '500',
+    color: '#FF4D4D',
   },
 
   /* 랭킹 정보 (기간 / 지역) */
@@ -1037,6 +1156,15 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     marginBottom: 10,
+  },
+
+  randomGainText: {
+    position: 'absolute',
+    bottom: 6, // 게이지 바로 위 정도
+    right: 18,
+    fontSize: 11,
+    color: '#9B9B9B',
+    fontWeight: '500',
   },
 
   /* 상위 3등 카드 */
@@ -1135,71 +1263,6 @@ const styles = StyleSheet.create({
     height: 11,
     marginLeft: 4,
     resizeMode: 'contain',
-  },
-
-  /* 랭킹 전체 리스트 */
-  rankingAll: {
-    marginTop: 16,
-  },
-  rankRowBase: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 23,
-    marginBottom: 5,
-  },
-  rankRow: {
-    backgroundColor: '#FFFFFF',
-  },
-  rankRowUp: {
-    backgroundColor: 'rgba(255, 120, 120, 0.25)',
-    borderRadius: 8,
-  },
-  rankRowDown: {
-    backgroundColor: 'rgba(120, 140, 255, 0.25)',
-    borderRadius: 8,
-  },
-  rankRowLeft: {
-    width: 80,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rankRowCenter: {
-    flex: 1,
-  },
-  rankRowRight: {
-    width: 80,
-    alignItems: 'flex-end',
-  },
-  rankNumberText: {
-    fontSize: 15,
-    color: '#000000',
-    fontFamily: 'Roboto',
-    marginRight: 8,
-    fontWeight: '400',
-  },
-  rankChangeText: {
-    fontSize: 15,
-    color: '#000000',
-    fontFamily: 'Roboto',
-  },
-  rankChangeIcon: {
-    width: 11,
-    height: 11,
-    resizeMode: 'contain',
-  },
-  rankFamilyName: {
-    fontSize: 13,
-    color: '#000000',
-    fontFamily: 'Roboto',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  rankScoreText: {
-    fontSize: 12,
-    color: '#FF4D4F',
-    fontFamily: 'Roboto',
-    fontWeight: '500',
   },
 
   /* 툴팁 오버레이 */

@@ -1,23 +1,168 @@
 import { router } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  FlatList,
   Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  TextInput,
-  FlatList,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+  Alert,
 } from 'react-native';
 
-import { useChallengeStore } from '@/src/store/useChallengeStore';
-import type { Filter } from '@/src/store/useChallengeStore';
+import { auth } from '../firebase/firebase';
 
-type Audience = '나' | '가족';
+import { challengeService } from '@/src/services/challengeService';
+import type {
+  Challenge as ChallengeItem,
+  Filter,
+} from '@/src/store/useChallengeStore';
+import { useChallengeStore } from '@/src/store/useChallengeStore';
+
+const AI_API_URL = 'https://callai-jb7eegn52q-du.a.run.app';
+
+// ───── AI 추천 응답 타입 ─────
+type ChallengeInfoFromAI = {
+  challengeId: string;
+  category: string;
+  mode?: string;
+  freq?: number;
+  durationType?: string;
+  deviceType?: string;
+  progressType?: string;
+  adj_score?: number;
+  score?: number;
+};
+
+type SpeedInfoFromAI = {
+  challengeId: string;
+  category: string;
+  userId: string;
+  notificationTime: string; // "17:00:00"
+  weekday: number;
+  freq: number;
+  familyPoints: number;
+  personalPoints: number;
+  adj_score: number;
+  score: number;
+};
+
+type TodayReportResponse = {
+  userId: string;
+  energyHigh?: boolean;
+  main_auc?: number;
+  speed_auc?: number;
+  daily?: ChallengeInfoFromAI;
+  monthly?: ChallengeInfoFromAI;
+  speed?: SpeedInfoFromAI;
+};
+
+function formatPeriodLabel(period?: 'daily' | 'weekly' | 'monthly' | 'relay') {
+  switch (period) {
+    case 'daily':
+      return 'Daily';
+    case 'weekly':
+      return 'Weekly';
+    case 'monthly':
+      return 'Monthly';
+    case 'relay':
+      return 'Relay';
+    default:
+      return 'Daily'; // 기본값
+  }
+}
+
+// challengeId → 카드에 쓸 이름
+function getChallengeNameFromId(challengeId: string) {
+  switch (challengeId) {
+    case 'daily_water_2':
+      return '아침·저녁 물 두 잔 마시기';
+    case 'monthly_heating':
+      return '한 달간 난방 절약';
+    case 'speed_dishwasher':
+      return '저녁 식기세척기 릴레이';
+    default:
+      return challengeId;
+  }
+}
+
+// AI 응답 → ChallengeItem[] 로 변환
+function mapAiResponseToChallenges(data: TodayReportResponse): ChallengeItem[] {
+  const result: ChallengeItem[] = [];
+
+  // 아침·저녁 물 두 잔 마시기 → 나 | 헬스
+  if (data.daily) {
+    result.push({
+      id: data.daily.challengeId,
+      title: getChallengeNameFromId(data.daily.challengeId),
+      audience: '나',
+      category: '헬스',
+      period: 'daily',
+      rewardPoints: 10,
+      progressPct: 0,
+    } as ChallengeItem);
+  }
+
+  // 한 달간 난방 절약 → 가족 | 절약
+  if (data.monthly) {
+    result.push({
+      id: data.monthly.challengeId,
+      title: getChallengeNameFromId(data.monthly.challengeId),
+      audience: '가족',
+      category: '절약',
+      period: 'monthly',
+      rewardPoints: 40,
+      progressPct: 0,
+    } as ChallengeItem);
+  }
+
+  // 저녁 식기세척기 릴레이 → 가족 | 가사
+  if (data.speed) {
+    result.push({
+      id: data.speed.challengeId,
+      title: getChallengeNameFromId(data.speed.challengeId),
+      audience: '가족',
+      category: '가사',
+      period: 'relay',
+      rewardPoints: data.speed.familyPoints ?? 0,
+      progressPct: 0,
+    } as ChallengeItem);
+  }
+
+  return result;
+}
+
+// 실제 API 호출 함수
+async function fetchAiRecommendedChallenges(
+  userId: string,
+): Promise<ChallengeItem[]> {
+  const res = await fetch(AI_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      userId,
+      top_k: 3,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.log('[AI Challenge ERROR]', res.status, text);
+    throw new Error(text || `status ${res.status}`);
+  }
+
+  const data: TodayReportResponse = await res.json();
+
+  return mapAiResponseToChallenges(data);
+}
+
+type Audience = '전체' | '나' | '가족';
 
 type CategoryFilterGroupProps = {
   audience: Audience;
@@ -87,6 +232,12 @@ function CategoryFilterGroup({
     <View style={styles.categoryFilterGroup}>
       {/* 1줄: 나 / 가족 */}
       <View style={styles.categoryRow}>
+        <CategoryButton
+          label="전체"
+          active={audience === '전체'}
+          onPress={() => onAudienceChange('전체')}
+        />
+        <View style={{ width: 12 }} />
         <CategoryButton
           label="나"
           active={audience === '나'}
@@ -159,13 +310,16 @@ function MyChallengeSection() {
   );
 }
 
+type ChallengeCardVariant = 'water' | 'heating' | 'dishwasher' | 'default';
+
 function ChallengeCard({
   category,
   type,
   title,
-  badgeText,
+  //badgeText,
   progressRatio,
   onPressDetail,
+  variant = 'default',
 }: {
   category: string;
   type: string;
@@ -173,64 +327,45 @@ function ChallengeCard({
   badgeText: string;
   progressRatio: number;
   onPressDetail?: () => void;
-}) {
-  return (
-    <View style={styles.challengeCard}>
-      <View style={styles.challengeCardHeader}>
-        <Text style={styles.challengeMetaText}>{category}</Text>
-        <View style={styles.metaDivider} />
-        <Text style={styles.challengeMetaText}>{type}</Text>
-        <View style={{ flex: 1 }} />
-        <TouchableOpacity
-          onPress={onPressDetail}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Image
-            source={require('../../assets/images/tabler_chevron-left.png')}
-            style={styles.chevronIcon}
-          />
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.challengeTitle}>{title}</Text>
-
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{badgeText}</Text>
-      </View>
-
-      <Image
-        source={require('../../assets/images/Polygon2.png')}
-        style={styles.badgeTriangle}
-      />
-
-      <View style={styles.progressBarBg}>
-        <View
-          style={[styles.progressBarFill, { width: `${progressRatio * 100}%` }]}
-        />
-      </View>
-    </View>
-  );
-}
-
-function ChallengeCardv2({
-  category,
-  type,
-  title,
-  badgeText,
-  progressRatio,
-  onPressDetail,
-}: {
-  category: string;
-  type: string;
-  title: string;
-  badgeText: string;
-  progressRatio: number;
-  onPressDetail?: () => void;
+  variant?: ChallengeCardVariant;
 }) {
   const hasProgress = progressRatio > 0;
 
+  type CardTheme = {
+    badgeStyle?: object;
+    progressColor?: string;
+  };
+
+  const getCardTheme = (v: ChallengeCardVariant): CardTheme => {
+    switch (v) {
+      case 'water':
+        return {
+          badgeStyle: { backgroundColor: '#5E75FD' },
+          progressColor: '#5E75FD',
+        };
+      case 'heating':
+        return {
+          badgeStyle: { backgroundColor: '#5E75FD' },
+          progressColor: '#5E75FD',
+        };
+      case 'dishwasher':
+        return {
+          badgeStyle: { backgroundColor: '#5E75FD' },
+          progressColor: '#5E75FD',
+        };
+      default:
+        return {
+          badgeStyle: {},
+          progressColor: '#5E75FD',
+        };
+    }
+  };
+
+  const theme = getCardTheme(variant);
+  const clamped = Math.max(0, Math.min(progressRatio, 1));
+
   return (
-    <View style={styles.challengeCard2}>
+    <View style={[styles.challengeCard]}>
       <View style={styles.challengeCardHeader}>
         <Text style={styles.challengeMetaText}>{category}</Text>
         <View style={styles.metaDivider} />
@@ -249,33 +384,55 @@ function ChallengeCardv2({
 
       <Text style={styles.challengeTitle}>{title}</Text>
 
-      <View style={styles.badge2}>
-        <Text style={styles.badgeText2}>{badgeText}</Text>
-      </View>
-      <Image
-        source={require('../../assets/images/Polygon2.png')}
-        style={styles.badgeTriangle2}
-      />
+      <View style={styles.progressBarContainer}>
+        <View style={styles.progressBarBg}>
+          {hasProgress && (
+            <View
+              style={[
+                styles.progressBarFill,
+                {
+                  width: `${clamped * 100}%`,
+                  backgroundColor: theme.progressColor,
+                },
+              ]}
+            />
+          )}
+        </View>
 
-      <View style={styles.progressBarBg}>
         {hasProgress && (
           <View
             style={[
-              styles.progressBarFill,
-              { width: `${progressRatio * 100}%` },
+              styles.cardProgressBubble,
+              { left: `${clamped * 100}%` }, // 게이지 끝 위치
             ]}
-          />
+          >
+            <Text style={styles.cardProgressBubbleText}>
+              {Math.round(clamped * 100)}%
+            </Text>
+
+            {/* 🔹 꼬리 추가 */}
+            <View style={styles.cardProgressBubbleTail} />
+          </View>
         )}
       </View>
     </View>
   );
 }
 
-function ChallengeProgressSection({
-  onPressRelayDetail,
-}: {
-  onPressRelayDetail: () => void;
-}) {
+function getVariantFromChallengeId(id: string): ChallengeCardVariant {
+  switch (id) {
+    case 'daily_water_2':
+      return 'water';
+    case 'monthly_heating':
+      return 'heating';
+    case 'speed_dishwasher':
+      return 'dishwasher';
+    default:
+      return 'default';
+  }
+}
+
+function ChallengeProgressSection({ items }: { items: ChallengeItem[] }) {
   return (
     <View style={styles.challengeProgressSection}>
       <Text style={[styles.sectionTitle, styles.progressSectionTitle]}>
@@ -287,119 +444,110 @@ function ChallengeProgressSection({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.challengeCardList}
       >
-        <ChallengeCardv2
-          category="헬스"
-          type="데일리"
-          title="물 한잔 마시기"
-          badgeText="0잔"
-          progressRatio={0}
-        />
-        <ChallengeCard
-          category="가사"
-          type="릴레이"
-          title="돌아가며 청소기 돌리기"
-          badgeText="3명 성공"
-          progressRatio={0.7}
-          onPressDetail={onPressRelayDetail}
-        />
-        <ChallengeCard
-          category="가사"
-          type="릴레이"
-          title="돌아가며 설거지하기"
-          badgeText="3명 성공"
-          progressRatio={0.7}
-        />
+        {items.length === 0 ? (
+          <Text style={{ color: '#999', marginLeft: 20 }}>
+            진행중인 챌린지가 없어요.
+          </Text>
+        ) : (
+          items.map((c) => (
+            <ChallengeCard
+              key={c.id}
+              category={c.category}
+              type={formatPeriodLabel(c.period)}
+              title={c.title}
+              badgeText={`${c.rewardPoints ?? 0}p`}
+              progressRatio={(c.progressPct ?? 0) / 100}
+              variant={getVariantFromChallengeId(c.id)}
+              onPressDetail={() => {}}
+            />
+          ))
+        )}
       </ScrollView>
     </View>
   );
 }
 
-type RecommendedChallenge = {
-  id: string;
-  category: string;
-  mode: string;
-  title: string;
-  time: string;
-  point: number;
-};
+// challengeId → 이미지 매핑
+function getChallengeImage(id: string) {
+  switch (id) {
+    case 'daily_water_2':
+      return require('../../assets/images/water.png');
+    case 'monthly_heating':
+      return require('../../assets/images/save.png');
+    default:
+      return require('../../assets/images/dishwasher.png'); // 기본 이미지
+  }
+}
 
-const RECOMMENDED_DATA: RecommendedChallenge[] = [
-  {
-    id: 'dishwasher',
-    category: '가사',
-    mode: '스피드',
-    title: '식기세척기 돌리기',
-    time: '10:00:00',
-    point: 40,
-  },
-  {
-    id: 'laundry',
-    category: '가사',
-    mode: '데일리',
-    title: '세탁기 돌리기',
-    time: '00:30:00',
-    point: 30,
-  },
-  {
-    id: 'steps',
-    category: '헬스',
-    mode: '릴레이',
-    title: '가족 만보 걷기',
-    time: '24:00:00',
-    point: 50,
-  },
-];
-
-type RecommendedChallengeSectionProps = {
-  onPressStart: (id: string) => void;
-  onIndexChange: (index: number) => void;
-};
+// challengeId → 스타일 매핑
+function getChallengeImageStyle(id: string) {
+  switch (id) {
+    case 'daily_water_2':
+      return styles.waterIcon; // 물 챌린지 전용 스타일
+    case 'monthly_heating':
+      return styles.heatingIcon; // 난방 절약 전용 스타일
+    case 'speed_dishwasher':
+      return styles.dishwasherIcon; // 기존 식기세척기 스타일
+    default:
+      return styles.defaultIcon; // 기본 스타일
+  }
+}
 
 function RecommendedChallengeSection({
+  items,
   onPressStart,
   onIndexChange,
-}: RecommendedChallengeSectionProps) {
+  onDismiss,
+  onRefresh,
+}: {
+  items: ChallengeItem[];
+  onPressStart: (id: string) => void;
+  onIndexChange: (index: number) => void;
+  onDismiss: (id: string) => void;
+  onRefresh: () => void;
+}) {
   const handleMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const width = e.nativeEvent.layoutMeasurement.width || 1;
     const offset = e.nativeEvent.contentOffset.x;
-    const rawIndex = offset / width;
-    let index = Math.round(rawIndex);
-
-    if (index < 0) index = 0;
-    if (index > RECOMMENDED_DATA.length - 1) {
-      index = RECOMMENDED_DATA.length - 1;
-    }
-
+    const index = Math.round(offset / width);
     onIndexChange(index);
   };
+
+  if (items.length === 0) {
+    return (
+      <View style={{ marginTop: 40, marginBottom: 20 }}>
+        <Text style={{ color: '#999', textAlign: 'center' }}>
+          추천 챌린지가 없어요.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.recommendedChallengeSection}>
       <View style={styles.recommendedHeader}>
         <Text style={styles.recommendTitle}>추천 챌린지</Text>
-        <TouchableOpacity
-          onPress={() => {
-            console.log('[Challenge] 추천 새로고침 클릭');
-          }}
-        >
+        <TouchableOpacity onPress={onRefresh}>
           <Text style={styles.refreshIcon}>↻</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={RECOMMENDED_DATA}
+        data={items}
         horizontal
         pagingEnabled
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingRight: 24 }}
         onMomentumScrollEnd={handleMomentumEnd}
         renderItem={({ item }) => (
           <View style={styles.recommendedCard}>
+            {/* 삭제 버튼 */}
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={() => {
-                console.log('[Challenge] 추천 카드 닫기', item.id);
+                console.log('❌ dismiss:', item.id);
+                onDismiss(item.id);
               }}
             >
               <Image
@@ -409,32 +557,54 @@ function RecommendedChallengeSection({
             </TouchableOpacity>
 
             <View style={styles.recommendedMetaRow}>
-              <Text style={styles.challengeMetaText}>{item.category}</Text>
+              <Text style={styles.challengeMetaText}>{item.audience}</Text>
               <View style={styles.metaDivider} />
-              <Text style={styles.challengeMetaText}>{item.mode}</Text>
-              <Image
-                source={require('../../assets/images/tdesign_time-filled.png')}
-                style={styles.metaIcon}
-              />
-              <Text style={styles.challengeMetaText}>{item.time}</Text>
+              <Text style={styles.challengeMetaText}>{item.category}</Text>
+              <Text style={styles.challengePeriodText}>
+                {formatPeriodLabel(item.period)}
+              </Text>
             </View>
 
             <View style={styles.recommendedContentRow}>
               <Image
-                source={require('../../assets/images/dishwasher.png')}
-                style={styles.dishwasherIcon}
+                source={getChallengeImage(item.id)}
+                style={getChallengeImageStyle(item.id)}
               />
 
               <View style={styles.recommendedTextCol}>
                 <Text style={styles.recommendedTitle}>{item.title}</Text>
-                <Text style={styles.recommendedPoint}>{item.point}p 받기</Text>
+                <Text style={styles.recommendedPoint}>
+                  {item.rewardPoints ?? 0}p 받기
+                </Text>
               </View>
 
               <TouchableOpacity
                 style={styles.ctaButton}
-                onPress={() => onPressStart(item.id)}
+                onPress={() => {
+                  console.log('🚀 onPressStart challengeId:', item.id);
+                  onPressStart(item.id);
+                }}
               >
                 <Text style={styles.ctaButtonText}>도전</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  challengeService.resetUserChallenges();
+                }}
+                style={{
+                  alignSelf: 'center',
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  backgroundColor: '#eee',
+                  marginTop: 8,
+                }}
+              >
+                <Text style={{ color: '#333' }}>
+                  개발용: 진행중 챌린지 초기화
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -444,12 +614,18 @@ function RecommendedChallengeSection({
   );
 }
 
-function PageIndicatorDots({ activeIndex = 0 }: { activeIndex?: number }) {
-  const dots = [0, 1, 2];
+function PageIndicatorDots({
+  activeIndex,
+  total,
+}: {
+  activeIndex: number;
+  total: number;
+}) {
+  if (total <= 1) return null;
 
   return (
     <View style={styles.pageIndicatorDots}>
-      {dots.map((idx) => (
+      {Array.from({ length: total }).map((_, idx) => (
         <View
           key={idx}
           style={[
@@ -514,355 +690,102 @@ function BottomTabBar() {
   );
 }
 
-// 파일 상단 어딘가(컴포넌트들 위)에 추가해도 되고,
-// ChallengeDetail 바로 위에 둬도 돼
-const track = (event: string, params: Record<string, any>) => {
-  console.log('[analytics]', event, params);
-};
+// 메인 페이지
+export function Challenge() {
+  const [activeRecIndex, setActiveRecIndex] = useState(0);
+  const [audience, setAudience] = useState<Audience>('전체');
 
-// 상세 하단 시트
-type ChallengeDetailProps = {
-  onClose: () => void;
+  // 🔹 AI 추천 결과를 담을 state
+  const [aiRecommended, setAiRecommended] = useState<ChallengeItem[]>([]);
+  const [_aiLoading, setAiLoading] = useState(false);
 
-  // ✅ 로그에 쓰기 위한 메타데이터
-  challengeId: string;
-  from: 'ongoing' | 'recommended';
-  audience: Audience; // '나' | '가족'
-  category: Filter; // '전체' | '절약' | '가사' | '헬스'
-};
+  const {
+    currentFilter,
+    setFilter,
+    hydrate,
+    startChallenge,
+    ongoing,
+    //recommended,
+    //dismissRecommendation,
+  } = useChallengeStore();
 
-type CommentItem = {
-  id: string;
-  author: string;
-  text: string;
-  likeCount: number;
-  likedDefault: boolean;
-};
-
-const COMMENT_DATA: CommentItem[] = [
-  {
-    id: 'c1',
-    author: '누나',
-    text: '이따가 제가 돌릴게요!',
-    likeCount: 3,
-    likedDefault: false,
-  },
-  {
-    id: 'c2',
-    author: '아빠',
-    text: '그래. 화이팅!',
-    likeCount: 1,
-    likedDefault: true,
-  },
-  {
-    id: 'c3',
-    author: '동생',
-    text: '누나만 하면 50포인트다~',
-    likeCount: 2,
-    likedDefault: false,
-  },
-];
-
-const getAvatarByAuthor = (author: string) => {
-  switch (author) {
-    case '누나':
-      return require('../../assets/images/user1.png');
-    case '아빠':
-      return require('../../assets/images/user2.png');
-    case '동생':
-      return require('../../assets/images/user3.png');
-  }
-};
-
-function ChallengeDetail({
-  onClose,
-  challengeId,
-  from,
-  audience,
-  category,
-}: ChallengeDetailProps) {
-  const [commentText, setCommentText] = useState('');
-  const [likedMap, setLikedMap] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    COMMENT_DATA.forEach((c) => {
-      init[c.id] = c.likedDefault;
-    });
-    return init;
-  });
-
-  // 화면 진입 로그
   useEffect(() => {
-    track('challenge_detail_view', {
-      challengeId,
-      from,
-      audience,
-      category,
-    });
+    hydrate();
+  }, [hydrate]);
+  // 여기 추가: Firestore 타는 도전 핸들러
+  const handlePressStart = async (challengeId: string) => {
+    const user = auth.currentUser;
 
-    // 진행 스텝 노출 로그 (예시 값)
-    track('challenge_detail_step_impression', {
-      challengeId,
-      totalSteps: 4,
-      completedSteps: 3,
-      currentStepOwner: '아빠',
-    });
-  }, [challengeId, from, audience, category]);
-
-  const handleClose = () => {
-    track('challenge_detail_close', {
-      challengeId,
-      closeReason: 'arrow_button',
-    });
-    onClose();
-  };
-
-  const handleLikeToggle = (comment: CommentItem) => {
-    const before = likedMap[comment.id] ?? comment.likedDefault;
-    const after = !before;
-
-    setLikedMap((prev) => ({ ...prev, [comment.id]: after }));
-
-    track('challenge_comment_like_toggle', {
-      challengeId,
-      commentId: comment.id,
-      likedAfter: after,
-      likeCountBefore: comment.likeCount,
-    });
-  };
-
-  const handleCommentFocus = () => {
-    track('challenge_comment_input_focus', {
-      challengeId,
-    });
-  };
-
-  const handleSubmitComment = () => {
-    const trimmed = commentText.trim();
-
-    if (!trimmed) {
-      track('challenge_comment_submit_fail', {
-        challengeId,
-        reason: 'empty',
-      });
+    if (!user) {
+      Alert.alert(
+        '로그인이 필요해요',
+        '챌린지를 시작하려면 먼저 로그인해주세요.',
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '로그인하러 가기',
+            onPress: () => {
+              router.push('/login');
+            },
+          },
+        ],
+      );
       return;
     }
 
-    track('challenge_comment_submit', {
-      challengeId,
-      contentLength: trimmed.length,
-      hasEmoji: /[\u{1F300}-\u{1FAFF}]/u.test(trimmed),
-      from: 'detail_bottom_input',
-    });
+    try {
+      // 1) Firestore 진행중 챌린지 생성
+      await startChallenge(challengeId);
 
-    // 실제로는 서버 전송 로직이 들어갈 자리
-    setCommentText('');
+      // 2) 로컬 진행중/추천 리스트 재동기화
+      await hydrate();
+
+      // 3) AI 추천 리스트에서도 해당 챌린지 제거
+      setAiRecommended((prev) => prev.filter((c) => c.id !== challengeId));
+    } catch (e) {
+      console.log('[Challenge] startChallenge error:', e);
+      Alert.alert(
+        '챌린지 시작 오류',
+        '챌린지를 시작하는 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
+      );
+    }
   };
 
-  return (
-    <View style={styles.detailContainer}>
-      {/* 위로 접기 버튼 */}
-      <TouchableOpacity style={styles.detailArrowButton} onPress={handleClose}>
-        <Image
-          source={require('../../assets/images/Expand_right.png')}
-          style={styles.detailArrowIcon}
-        />
-      </TouchableOpacity>
+  // 🔹 AI 추천 불러오기 함수
+  const loadAiRecommended = async () => {
+    try {
+      setAiLoading(true);
+      const list = await fetchAiRecommendedChallenges('user_4');
+      setAiRecommended(list);
+    } catch (e) {
+      console.log('[loadAiRecommended] error:', e);
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
-      {/* 카테고리 / 제목 */}
-      <View style={styles.detailHeader}>
-        <Text style={styles.detailCategoryLabel}>가사 | 릴레이</Text>
-        <Text style={styles.detailTitle}>
-          엄마&gt;동생&gt;아빠&gt;누나 손으로 로봇청소기 돌리기
-        </Text>
-      </View>
-
-      {/* 진행 dots + 로봇 + 라인 */}
-      <View style={styles.detailProgressWrapper}>
-        <View style={styles.detailProgressDotsRow}>
-          <View style={styles.detailDotDone} />
-          <View style={styles.detailDotDone} />
-          <Image
-            source={require('../../assets/images/Robot.png')}
-            style={styles.detailRobotIcon}
-          />
-          <View style={styles.detailDotYet} />
-        </View>
-
-        <View style={styles.detailProgressLineBg}>
-          <View style={styles.detailProgressLineFill} />
-        </View>
-      </View>
-
-      {/* 진행 상태 말풍선들 */}
-      <View style={styles.progressBubbleRow}>
-        {/* 엄마 */}
-        <View className="bubble">
-          <View style={styles.progressBubble}>
-            <View style={styles.progressBubbleTail} />
-            <Text style={styles.progressBubbleText}>엄마{'\n'}10/1 완료!</Text>
-          </View>
-        </View>
-
-        {/* 동생 */}
-        <View style={styles.progressBubble}>
-          <View style={styles.progressBubbleTail} />
-          <Text style={styles.progressBubbleText}>동생{'\n'}10/3 완료!</Text>
-        </View>
-
-        {/* 아빠 */}
-        <View style={styles.progressBubble}>
-          <View style={styles.progressBubbleTail} />
-          <Text style={styles.progressBubbleText}>아빠{'\n'}10/5 완료!</Text>
-        </View>
-      </View>
-
-      {/* 기간 / 모드 / 포인트 */}
-      <View style={styles.detailMetaPillRow}>
-        <TouchableOpacity
-          style={styles.detailMetaPill}
-          onPress={() =>
-            track('challenge_detail_meta_pill_click', {
-              challengeId,
-              pillType: 'duration',
-            })
-          }
-        >
-          <Text style={styles.detailMetaPillText}>기간: 1주</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.detailMetaPill}
-          onPress={() =>
-            track('challenge_detail_meta_pill_click', {
-              challengeId,
-              pillType: 'mode',
-            })
-          }
-        >
-          <Text style={styles.detailMetaPillText}>모드: easy</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.detailMetaPill}
-          onPress={() =>
-            track('challenge_detail_meta_pill_click', {
-              challengeId,
-              pillType: 'point',
-            })
-          }
-        >
-          <Text style={styles.detailMetaPillText}>포인트: 50p</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 구분선 */}
-      <View style={styles.detailDivider} />
-
-      {/* 댓글 영역 */}
-      <View style={styles.commentSection}>
-        <Text style={styles.commentCountLabel}>
-          댓글 {COMMENT_DATA.length}개
-        </Text>
-
-        {COMMENT_DATA.map((comment) => {
-          const liked = likedMap[comment.id] ?? comment.likedDefault;
-          const isDad = comment.author === '아빠';
-
-          return (
-            <React.Fragment key={comment.id}>
-              <View style={[styles.commentRow, isDad && styles.commentRowDad]}>
-                <View style={styles.commentAvatarWrapper}>
-                  <Image
-                    source={getAvatarByAuthor(comment.author)}
-                    style={styles.commentAvatar}
-                  />
-                </View>
-                <View style={styles.commentContent}>
-                  <Text style={styles.commentAuthor}>{comment.author}</Text>
-                  <Text style={styles.commentText}>{comment.text}</Text>
-                  <Text style={styles.commentMeta}>
-                    2025.10.08. 16:30 답글쓰기
-                  </Text>
-                </View>
-
-                {/* 좋아요 영역을 TouchableOpacity로 감싸서 토글 */}
-                <TouchableOpacity
-                  style={styles.commentLikeBox}
-                  onPress={() => handleLikeToggle(comment)}
-                >
-                  <Image
-                    source={
-                      liked
-                        ? require('../../assets/images/heart-red.png')
-                        : require('../../assets/images/heart-black.png')
-                    }
-                    style={styles.commentLikeIcon}
-                  />
-                  <Text style={styles.commentLikeCount}>
-                    {comment.likeCount +
-                      (liked ? 1 : 0) -
-                      (comment.likedDefault ? 1 : 0)}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.commentInnerDivider} />
-            </React.Fragment>
-          );
-        })}
-      </View>
-
-      {/* 댓글 입력 바 */}
-      <View style={styles.commentInputBar}>
-        <TextInput
-          style={styles.commentInput}
-          placeholder="응원의 댓글을 입력해주세요 :)"
-          placeholderTextColor="#A3A3A3"
-          value={commentText}
-          onChangeText={setCommentText}
-          onFocus={handleCommentFocus}
-        />
-        <TouchableOpacity
-          style={styles.commentSendButton}
-          onPress={handleSubmitComment}
-        >
-          <Text style={styles.commentSendText}>전송</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-/* ============ 메인 스크린 ============ */
-
-export function Challenge() {
-  console.log('[Challenge] render');
-
-  const [showDetail, setShowDetail] = useState(false);
-  const [audience, setAudience] = useState<Audience>('나');
-  const [activeRecIndex, setActiveRecIndex] = useState(0);
-
-  const { currentFilter, setFilter, hydrate, startChallenge } =
-    useChallengeStore();
-
+  // 최초 진입 시: 기존 hydrate + AI 추천 함께 호출
   useEffect(() => {
-    console.log('[Challenge] useEffect → hydrate()');
-    hydrate();
-  }, [hydrate]);
+    loadAiRecommended();
+  }, []);
 
   const onCategoryChange = (filter: Filter) => {
-    console.log('[Challenge] onFilterPress', filter);
+    console.log('📌 onCategoryChange:', filter);
     setFilter(filter);
     hydrate();
   };
 
-  const onAudienceChange = (value: Audience) => {
-    console.log('[Challenge] onAudienceChange', value);
-    setAudience(value);
+  // audience: 나 / 가족 필터
+  // currentFilter: 전체 / 절약 / 가사 / 헬스 필터
+  const matchesFilter = (c: ChallengeItem) => {
+    const matchAudience = audience === '전체' || c.audience === audience;
+    const matchCategory =
+      currentFilter === '전체' || c.category === currentFilter;
+    return matchAudience && matchCategory;
   };
 
-  const onPressStart = async (id: string) => {
-    console.log('[Challenge] onPressStart → startChallenge', id);
-    await startChallenge(id);
-  };
+  const filteredOngoing = ongoing.filter(matchesFilter);
+  const filteredRecommended = aiRecommended.filter(matchesFilter);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -877,32 +800,37 @@ export function Challenge() {
           <CategoryFilterGroup
             audience={audience}
             category={currentFilter}
-            onAudienceChange={onAudienceChange}
+            onAudienceChange={(v) => {
+              console.log('📌 onAudienceChange:', v);
+              setAudience(v);
+            }}
             onCategoryChange={onCategoryChange}
           />
 
           <MyChallengeSection />
 
-          <ChallengeProgressSection
-            onPressRelayDetail={() => setShowDetail(true)}
-          />
+          <ChallengeProgressSection items={filteredOngoing} />
 
           <RecommendedChallengeSection
-            onPressStart={onPressStart}
+            items={filteredRecommended}
+            onPressStart={handlePressStart}
             onIndexChange={setActiveRecIndex}
+            onDismiss={(id) => {
+              // Firestore 템플릿은 건드리지 않고, 화면에서만 제거
+              setAiRecommended((prev) => prev.filter((c) => c.id !== id));
+            }}
+            onRefresh={() => {
+              hydrate(); // 진행중 리스트 새로고침
+              loadAiRecommended(); // AI 추천 다시 불러오기
+            }}
           />
         </View>
-
-        <PageIndicatorDots activeIndex={activeRecIndex} />
       </ScrollView>
-
+      <PageIndicatorDots
+        activeIndex={activeRecIndex}
+        total={filteredRecommended.length}
+      />
       <BottomTabBar />
-
-      {showDetail && (
-        <View style={styles.detailSheetWrapper}>
-          <ChallengeDetail onClose={() => setShowDetail(false)} />
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -1090,25 +1018,9 @@ const styles = StyleSheet.create({
     paddingRight: 16,
     paddingLeft: 20,
   },
-  challengeCard: {
-    width: 147,
-    height: 108,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    marginRight: 16,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    // 그림자
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-  },
 
-  challengeCard2: {
-    width: 135,
+  challengeCard: {
+    width: 170,
     height: 108,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
@@ -1133,6 +1045,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7B7B7B',
     fontFamily: 'Roboto',
+    marginLeft: 2,
+  },
+  challengePeriodText: {
+    fontSize: 12,
+    color: '#7B7B7B',
+    fontFamily: 'Roboto',
+    marginLeft: 10,
   },
   metaDivider: {
     width: 1,
@@ -1215,6 +1134,66 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#5E75FD',
   },
+  progressBarContainer: {
+    marginLeft: 10,
+    marginRight: 10,
+    marginTop: 8,
+    position: 'relative',
+  },
+
+  progressBubble: {
+    position: 'absolute',
+    bottom: 16, // 말풍선이 바 위로 올라오도록
+    transform: [{ translateX: -14 }], // 말풍선 가운데 맞추기 (말풍선 너비가 ~28px 기준)
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#5E75FD',
+  },
+
+  progressBubbleText: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    fontFamily: 'Roboto',
+  },
+
+  // 🔹 챌린지 카드 위에 붙는 말풍선
+  cardProgressBubble: {
+    position: 'absolute',
+    bottom: 16, // 바 위로 살짝 띄우기
+    transform: [{ translateX: -35 }], // 가운데 정렬 (minWidth 70 기준)
+    backgroundColor: '#5E75FD',
+    borderRadius: 30,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 19,
+  },
+
+  cardProgressBubbleText: {
+    color: '#FFFFFF',
+    fontFamily: 'Roboto',
+    fontSize: 9,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 9,
+  },
+  // 꼬리 (버블 안에 자식으로 넣기)
+  cardProgressBubbleTail: {
+    position: 'absolute',
+    bottom: -6,
+    left: '50%',
+    marginLeft: 4,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#5E75FD',
+  },
 
   /* 추천 챌린지 */
   recommendedChallengeSection: {
@@ -1286,12 +1265,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dishwasherIcon: {
-    width: 38,
-    height: 43,
+    width: 45,
+    height: 50,
     resizeMode: 'contain',
-    marginRight: 30,
+    marginRight: 15,
     marginLeft: 16,
   },
+  waterIcon: {
+    width: 64,
+    height: 64,
+    resizeMode: 'contain',
+    marginRight: 10,
+    marginTop: -9,
+  },
+
+  heatingIcon: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+    marginRight: 10,
+    marginTop: -7,
+  },
+
+  defaultIcon: {
+    width: 40,
+    height: 40,
+    resizeMode: 'contain',
+    opacity: 0.9,
+  },
+
   recommendedTextCol: {
     flex: 1,
   },
@@ -1464,38 +1466,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#5E75FD',
   },
-
-  progressBubbleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start', // ✅ 왼쪽 정렬
-    columnGap: 10, // ✅ 버블 사이 간격 (기존보다 좁게 조정)
-    paddingHorizontal: 0, // ✅ 기존 패딩 제거 (좌우 간격 넓힐 때만 필요)
-    marginTop: 10,
-    marginBottom: 7,
-    marginLeft: 15, // ✅ 전체를 왼쪽으로 옮기고 싶을 때 조정 (값 작일수록 왼쪽으로)
-  },
-
-  progressBubble: {
-    backgroundColor: '#353535',
-    borderRadius: 30,
-    paddingHorizontal: 2,
-    paddingVertical: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 70,
-    position: 'relative', // <- 삼각형 꼬리를 내부에 두기 위해 필요
-  },
-
-  progressBubbleText: {
-    color: '#FFFFFF',
-    fontFamily: 'Roboto',
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-
   progressBubbleTail: {
     position: 'absolute',
     top: -6,
