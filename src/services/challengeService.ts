@@ -1,6 +1,5 @@
 // src/services/challengeService.ts
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
@@ -9,6 +8,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   startAfter,
   updateDoc,
   where,
@@ -28,6 +28,8 @@ export type ChallengeDto = {
   basePersonalPoints?: number;
   baseFamilyPoints?: number;
   createdAt?: string;
+  durationType?: string;
+  recommendedTimeSlot?: string;
 };
 
 // ChallengeProgressDto (progress 문서 타입)
@@ -69,6 +71,8 @@ const mapDocToDto = (
     basePersonalPoints: (d.basePersonalPoints as number) ?? 0,
     baseFamilyPoints: (d.baseFamilyPoints as number) ?? 0,
     createdAt: d.createdAt as string | undefined,
+    durationType: d.durationType as string | undefined,
+    recommendedTimeSlot: d.recommendedTimeSlot as string | undefined,
   };
 };
 
@@ -145,31 +149,117 @@ export const challengeService = {
     return { items, cursor: nextCursor as string | null };
   },
 
-  /** 도전 시작 */
+  /** 도전 시작: 추천 챌린지 템플릿을 기반으로 challengeProgress 문서 생성 */
   async startChallenge(challengeId: string) {
+    console.log('🔥 [startChallenge] called with challengeId =', challengeId);
+    console.log('🔥 [startChallenge] auth.currentUser =', auth.currentUser);
+
     const user = auth.currentUser;
     if (!user) throw new Error('로그인 필요');
 
+    // 1) 템플릿 로드
     const tmplRef = doc(db, 'challenges', challengeId);
     const tmplSnap = await getDoc(tmplRef);
     if (!tmplSnap.exists()) throw new Error('챌린지 템플릿 없음');
 
     const d = tmplSnap.data() as any;
-    const isPersonal = d.mode === 'personal';
 
-    const userCol = collection(db, 'users', user.uid, 'challenges');
-    await addDoc(userCol, {
+    const mode: 'personal' | 'family' = d.mode ?? 'personal';
+    const challengeCategory: string = d.category ?? 'chores';
+
+    const durationType: string = d.durationType ?? 'daily';
+    const progressType: string = d.progressType ?? 'single';
+    const recommendedTimeSlot: string | undefined = d.recommendedTimeSlot;
+    const deviceType: string = d.deviceType ?? 'none';
+    const unit: string | undefined = d.unit;
+
+    // single 타입이면 1회 완료 기준, 아니면 템플릿에 별도 targetValue가 있으면 사용
+    const targetValue: number =
+      typeof d.targetValue === 'number'
+        ? d.targetValue
+        : progressType === 'single'
+          ? 1
+          : 0;
+
+    const basePersonalPoints: number = d.basePersonalPoints ?? 0;
+    const baseFamilyPoints: number = d.baseFamilyPoints ?? 0;
+
+    // 2) personal vs family에 따라 경로 결정
+    let progressDocRef;
+
+    if (mode === 'personal') {
+      // /users/{uid}/challengeProgress/{challengeId}
+      progressDocRef = doc(
+        db,
+        'users',
+        user.uid,
+        'challengeProgress',
+        challengeId,
+      );
+    } else {
+      // /families/{familyId}/challengeProgress/{challengeId}
+      // familyId는 /users/{uid} 문서에서 가져옴.
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        throw new Error('사용자 문서를 찾을 수 없습니다.');
+      }
+
+      const userData = userSnap.data() as any;
+      const familyId: string | undefined = userData.familyId;
+
+      if (!familyId) {
+        throw new Error('가족 정보가 없어 가족 챌린지를 시작할 수 없습니다.');
+      }
+
+      progressDocRef = doc(
+        db,
+        'families',
+        familyId,
+        'challengeProgress',
+        challengeId,
+      );
+    }
+
+    // 3) payload 구성 (undefined 필드는 넣지 않기)
+    const payload: any = {
+      cardId: challengeId,
       challengeId,
-      title: d.title,
-      category: isPersonal ? '나' : '가족',
-      rewardPoints: isPersonal
-        ? (d.basePersonalPoints ?? 0)
-        : (d.baseFamilyPoints ?? 0),
+      challengeTitle: d.title,
+      challengeCategory,
+      mode,
+
+      deviceType,
+      durationType,
+      progressType,
 
       status: 'ONGOING',
-
-      progressPct: 0,
       startedAt: serverTimestamp(),
+      lastEventDate: null,
+
+      currentValue: 0,
+      targetValue,
+
+      totalEnergyKwh: 0,
+      totalPersonalPoints: mode === 'personal' ? basePersonalPoints : 0,
+      totalFamilyPoints: mode === 'family' ? baseFamilyPoints : 0,
+    };
+
+    // 선택 필드들: 값이 있을 때만 추가
+    if (recommendedTimeSlot != null) {
+      payload.recommendedTimeSlot = recommendedTimeSlot;
+    }
+    if (unit != null && unit !== '') {
+      payload.unit = unit;
+    }
+
+    // 4) 문서 저장
+    await setDoc(progressDocRef, payload);
+
+    console.log('[startChallenge] created progress doc', {
+      mode,
+      challengeId,
+      path: progressDocRef.path,
     });
   },
 
@@ -206,5 +296,87 @@ export const challengeService = {
       category: data.category as Filter, // '나' | '가족'
       title: data.title as string,
     };
+  },
+
+  /** 나의 챌린지 요약 지표 */
+  async getMySummary(uid: string) {
+    const colRef = collection(db, 'users', uid, 'challengeProgress');
+    const snap = await getDocs(colRef);
+
+    let totalParticipated = 0;
+    let totalCompleted = 0;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const status = (data.status as string) ?? 'ONGOING';
+
+      // 참여한 미션: ONGOING / COMPLETED / FAILED / EXPIRED
+      if (
+        status === 'ONGOING' ||
+        status === 'COMPLETED' ||
+        status === 'FAILED'
+      ) {
+        totalParticipated += 1;
+      }
+
+      // 성공한 미션: COMPLETED
+      if (status === 'COMPLETED') {
+        totalCompleted += 1;
+      }
+    });
+
+    const successRate =
+      totalParticipated > 0
+        ? Math.round((totalCompleted / totalParticipated) * 100)
+        : 0;
+
+    console.log('[challengeService.getMySummary]', {
+      totalParticipated,
+      totalCompleted,
+      successRate,
+    });
+
+    return { totalParticipated, totalCompleted, successRate };
+  },
+
+  /** 우리 가족 챌린지 요약 지표 */
+  async getFamilySummary(familyId: string) {
+    const colRef = collection(db, 'families', familyId, 'challengeProgress');
+    const snap = await getDocs(colRef);
+
+    let totalParticipated = 0;
+    let totalCompleted = 0;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const status = (data.status as string) ?? 'ONGOING';
+
+      // 참여한 미션: ONGOING / COMPLETED / FAILED
+      if (
+        status === 'ONGOING' ||
+        status === 'COMPLETED' ||
+        status === 'FAILED'
+      ) {
+        totalParticipated += 1;
+      }
+
+      // 성공한 미션: COMPLETED
+      if (status === 'COMPLETED') {
+        totalCompleted += 1;
+      }
+    });
+
+    const successRate =
+      totalParticipated > 0
+        ? Math.round((totalCompleted / totalParticipated) * 100)
+        : 0;
+
+    console.log('[challengeService.getFamilySummary]', {
+      totalParticipated,
+      totalCompleted,
+      successRate,
+    });
+
+    return { totalParticipated, totalCompleted, successRate };
   },
 };
