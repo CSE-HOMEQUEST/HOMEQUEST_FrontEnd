@@ -420,6 +420,7 @@ export const challengeService = {
     };
 
     const result = await runTransaction(db, async (tx): Promise<TxResult> => {
+      // 1) progress 문서 먼저 읽기 (반드시 맨 위에서)
       const snap = await tx.get(progressRef);
       if (!snap.exists()) {
         throw new Error('진행 중인 챌린지를 찾을 수 없습니다.');
@@ -446,10 +447,10 @@ export const challengeService = {
 
       const title: string = data.challengeTitle ?? data.title ?? '';
 
-      // 이번 기여의 value (지금은 1회 기준, 나중에 raw value를 받도록 확장 가능)
+      // 이번 기여의 value (지금은 1회 기준)
       let deltaValue = 1;
       if (unit && unit !== '번') {
-        // TODO: 물/L, kWh 등 aggregate 모드가 생기면 여기에서 rawValue를 받아 처리
+        // TODO: 물/L, kWh 등 aggregate 모드에서 rawValue 사용
       }
 
       const newCurrentValue = currentValue + deltaValue;
@@ -459,11 +460,32 @@ export const challengeService = {
         targetValue > 0 &&
         newCurrentValue >= targetValue;
 
-      // 3-1) contributions 서브컬렉션에 이벤트 1건 생성
+      // 2) 포인트 업데이트를 위해 users/families도 "읽기만" 해둔다 (필요한 경우에만)
+      let userData: any = null;
+      let familyData: any = null;
+      let fid: string | null = familyId ?? data.familyId ?? null;
+
+      if (isJustCompleted) {
+        if (mode === 'personal') {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await tx.get(userRef); // ✅ still before any write
+          userData = (userSnap.data() as any) ?? {};
+        } else {
+          if (!fid) {
+            throw new Error('가족 ID가 없어 포인트를 갱신할 수 없습니다.');
+          }
+          const familyRef = doc(db, 'families', fid);
+          const familySnap = await tx.get(familyRef); // ✅ still before any write
+          familyData = (familySnap.data() as any) ?? {};
+        }
+      }
+
+      // 3) 이제부터는 "쓰기만"
+
+      // 3-1) contributions 서브컬렉션에 이벤트 생성
       const contribColRef = collection(progressRef, 'contributions');
       const contribDocRef = doc(contribColRef); // auto-id
 
-      // 완료 이벤트라서 completed = true, 포인트는 isJustCompleted인 경우에만 넣음
       let personalPoints = 0;
       let familyPoints = 0;
 
@@ -480,14 +502,14 @@ export const challengeService = {
         category: challengeCategory,
         challengeId,
         completed: isJustCompleted,
-        completionTime, // "HH:MM:SS"
+        completionTime,
         createdAt: serverTimestamp(),
         deviceType,
         durationType,
-        energyKwh: 0, // 지금은 0, 나중에 실제 값 넣을 수 있음
-        eventDate, // 자정 기준 날짜
+        energyKwh: 0,
+        eventDate,
         eventId: contribDocRef.id,
-        familyId: familyId ?? data.familyId ?? null,
+        familyId: fid,
         familyPoints,
         mode,
         notificationTime: null,
@@ -499,7 +521,6 @@ export const challengeService = {
         weekday,
       };
 
-      // null/undefined 필드 정리
       Object.keys(contribPayload).forEach((k) => {
         if (contribPayload[k] === null || contribPayload[k] === undefined) {
           delete contribPayload[k];
@@ -521,27 +542,22 @@ export const challengeService = {
 
       tx.update(progressRef, update);
 
-      // 3-3) user / family 전역 포인트 업데이트
+      // 3-3) user / family 포인트 업데이트 (이미 읽어둔 데이터 사용, 추가 read 없음)
       let rewardPoints = 0;
 
       if (isJustCompleted) {
         if (mode === 'personal') {
           const userRef = doc(db, 'users', user.uid);
-          const userSnap = await tx.get(userRef);
-          const userData = (userSnap.data() as any) ?? {};
-          const prevTotal = userData.totalPoints ?? 0;
+          const prevTotal = userData?.totalPoints ?? 0;
           const newTotal = prevTotal + rewardPersonalPoints;
           tx.update(userRef, { totalPoints: newTotal });
           rewardPoints = rewardPersonalPoints;
         } else {
-          const fid = familyId ?? data.familyId ?? null;
           if (!fid) {
             throw new Error('가족 ID가 없어 포인트를 갱신할 수 없습니다.');
           }
           const familyRef = doc(db, 'families', fid);
-          const familySnap = await tx.get(familyRef);
-          const familyData = (familySnap.data() as any) ?? {};
-          const prevTotal = familyData.totalFamilyPoints ?? 0;
+          const prevTotal = familyData?.totalFamilyPoints ?? 0;
           const newTotal = prevTotal + rewardFamilyPoints;
           tx.update(familyRef, { totalFamilyPoints: newTotal });
           rewardPoints = rewardFamilyPoints;

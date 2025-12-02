@@ -401,9 +401,30 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
             ? 'dong'
             : s.effects.lastCompleted;
 
+      // 🔵 1) 기존 recommended에서 같은 id는 일단 제거 (중복 방지)
+      const filteredRecommended = s.recommended.filter((c) => c.id !== id);
+
+      // 🔵 2) 다시 추천용 아이템으로 넣기
+      const reRecommendedItem: Challenge | undefined = target
+        ? {
+            ...target,
+            status: 'recommended',
+            progressPct: 0,
+            currentValue: 0,
+            // targetValue는 한 판 기준 유지
+            targetValue: target.targetValue,
+            completedAt: undefined,
+          }
+        : undefined;
+
+      const nextRecommended = reRecommendedItem
+        ? [...filteredRecommended, reRecommendedItem]
+        : filteredRecommended;
+
       return {
         ongoing: remaining,
         completed: nextCompleted,
+        recommended: nextRecommended,
         effects: {
           ...s.effects,
           lastCompleted,

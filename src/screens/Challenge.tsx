@@ -358,7 +358,7 @@ function ChallengeProgressSection({
 
             return (
               <ChallengeCardv2
-                key={c.id}
+                key={`${c.id}-${c.progressId ?? 'no-progress'}-${c.status}`}
                 category={c.domainCategory ?? '전체'}
                 type={mapDurationTypeToLabel(c.durationType)}
                 title={c.title}
