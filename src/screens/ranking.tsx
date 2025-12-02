@@ -750,7 +750,7 @@ export function Ranking() {
       } catch (e) {
         console.log('[DevBoost] fast booster error', e);
       }
-    }, 600);
+    }, 6000000);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -796,7 +796,7 @@ export function Ranking() {
       } catch (e) {
         console.log('[DevBoost] fast booster error', e);
       }
-    }, 600); // 1.5초
+    }, 6000000); // 1.5초
 
     return () => {
       clearInterval(intervalId);

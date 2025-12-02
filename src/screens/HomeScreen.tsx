@@ -1,22 +1,22 @@
 // src/screens/Home.tsx
-import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Image,
+  ImageStyle,
+  Modal,
   SafeAreaView,
   StyleSheet,
   Text,
-  View,
-  Image,
   TouchableOpacity,
-  ImageStyle,
-  Modal,
+  View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -161,8 +161,7 @@ function RoomBlock() {
   };
 
   const lastCompleted = useChallengeStore((s) => s.effects.lastCompleted);
-  const resetEffect = useChallengeStore.getState().resetEffect;
-
+  const resetEffect = useChallengeStore((s) => s.resetEffect);
   useEffect(() => {
     if (lastCompleted === 'jin') {
       triggerGlow();

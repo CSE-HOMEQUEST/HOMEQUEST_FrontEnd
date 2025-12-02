@@ -12,7 +12,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Alert,
 } from 'react-native';
 
 import ChallengeDetail from '@/src/components/ChallengeDetail';
@@ -26,7 +25,6 @@ import type {
 import { useChallengeStore } from '@/src/store/useChallengeStore';
 
 type Audience = '나' | '가족';
-type DurationFilter = '전체' | '데일리' | '위클리' | '먼슬리';
 
 type CategoryFilterGroupProps = {
   audience: Audience;
@@ -35,45 +33,6 @@ type CategoryFilterGroupProps = {
   onCategoryChange: (value: Filter) => void;
 };
 
-const AI_API_URL = 'https://callai-jb7eegn52q-du.a.run.app';
-
-// ───── AI 추천 응답 타입 ─────
-type ChallengeInfoFromAI = {
-  challengeId: string;
-  category: string;
-  mode?: string;
-  freq?: number;
-  durationType?: string;
-  deviceType?: string;
-  progressType?: string;
-  adj_score?: number;
-  score?: number;
-};
-
-type SpeedInfoFromAI = {
-  challengeId: string;
-  category: string;
-  userId: string;
-  notificationTime: string; // "17:00:00"
-  weekday: number;
-  freq: number;
-  familyPoints: number;
-  personalPoints: number;
-  adj_score: number;
-  score: number;
-};
-
-type TodayReportResponse = {
-  userId: string;
-  energyHigh?: boolean;
-  main_auc?: number;
-  speed_auc?: number;
-  daily?: ChallengeInfoFromAI;
-  monthly?: ChallengeInfoFromAI;
-  speed?: SpeedInfoFromAI;
-};
-
-// durationType → 한글 라벨
 const mapDurationTypeToLabel = (durationType?: string): string => {
   switch (durationType) {
     case 'daily':
@@ -101,11 +60,12 @@ const formatTimeSlotLabel = (timeSlot?: string): string => {
     case 'night':
       return '밤';
     default:
+      // 14:00 같은 포맷은 일단 그대로 노출
       return timeSlot;
   }
 };
 
-/*const formatProgressBadge = (c: ChallengeItem): string => {
+const formatProgressBadge = (c: ChallengeItem): string => {
   const cur = c.currentValue ?? 0;
   const target = c.targetValue ?? 0;
   const unit = c.unit ?? '';
@@ -114,125 +74,7 @@ const formatTimeSlotLabel = (timeSlot?: string): string => {
     return unit ? `${cur}${unit}` : `${cur}`;
   }
   return unit ? `${cur}/${target}${unit}` : `${cur}/${target}`;
-};*/
-
-// challengeId → 카드에 쓸 이름
-function getChallengeNameFromId(challengeId: string) {
-  switch (challengeId) {
-    case 'daily_water_2':
-      return '아침·저녁 물 두 잔 마시기';
-    case 'monthly_heating':
-      return '한 달간 난방 절약';
-    case 'speed_dishwasher':
-      return '저녁 식기세척기 릴레이';
-    default:
-      return challengeId;
-  }
-}
-
-function getOngoingCategoryLabel(c: ChallengeItem): string {
-  // 이미 도메인 카테고리가 제대로 들어온 경우는 그걸 그대로 사용
-  if (c.domainCategory && c.domainCategory !== '전체') {
-    return c.domainCategory;
-  }
-
-  // 아직 '전체'로만 오는 템플릿들은 ID 기준으로 강제 매핑
-  switch (c.id) {
-    case 'daily_water_2':
-      return '헬스';
-    case 'monthly_heating':
-    case 'ch_saving_heater_day':
-    case 'ch_saving_heater_m1':
-      return '절약';
-    case 'speed_dishwasher':
-      return '가사';
-    default:
-      return '전체';
-  }
-}
-
-// AI 응답 → ChallengeItem[] 로 변환 (UI에서 쓰는 필드만 세팅)
-function mapAiResponseToChallenges(data: TodayReportResponse): ChallengeItem[] {
-  const result: ChallengeItem[] = [];
-
-  // daily_water_2 → 나 | 헬스 | 데일리
-  if (data.daily) {
-    result.push({
-      id: data.daily.challengeId,
-      title: getChallengeNameFromId(data.daily.challengeId),
-      category: '나', // audience 필터용
-      domainCategory: '헬스', // 절약 / 가사 / 헬스
-      durationType: 'daily',
-      rewardPoints: 10,
-      progressPct: 0,
-      currentValue: 0,
-      targetValue: 1,
-      unit: '회',
-    } as ChallengeItem);
-  }
-
-  // monthly_heating → 가족 | 절약 | 먼슬리
-  if (data.monthly) {
-    result.push({
-      id: data.monthly.challengeId,
-      title: getChallengeNameFromId(data.monthly.challengeId),
-      category: '가족',
-      domainCategory: '절약',
-      durationType: 'monthly',
-      rewardPoints: 40,
-      progressPct: 0,
-      currentValue: 0,
-      targetValue: 30,
-      unit: '일',
-    } as ChallengeItem);
-  }
-
-  // speed_dishwasher → 나 | 가사 | 데일리 (저녁)
-  if (data.speed) {
-    result.push({
-      id: data.speed.challengeId,
-      title: getChallengeNameFromId(data.speed.challengeId),
-      category: '나', // 개인 챌린지이므로 '나'
-      domainCategory: '가사',
-      durationType: 'daily',
-      rewardPoints: data.speed.personalPoints ?? 0, // 개인 포인트 사용
-      progressPct: 0,
-      currentValue: 0,
-      targetValue: 1,
-      unit: '회',
-      recommendedTimeSlot: 'evening',
-    } as ChallengeItem);
-  }
-
-  return result;
-}
-
-// 실제 API 호출 함수
-async function fetchAiRecommendedChallenges(
-  userId: string,
-): Promise<ChallengeItem[]> {
-  const res = await fetch(AI_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      userId,
-      top_k: 3,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    console.log('[AI Challenge ERROR]', res.status, text);
-    throw new Error(text || `status ${res.status}`);
-  }
-
-  const data: TodayReportResponse = await res.json();
-  return mapAiResponseToChallenges(data);
-}
-
-/* ================== UI 컴포넌트 ================== */
+};
 
 function Header() {
   return (
@@ -357,7 +199,7 @@ function MyChallengeSection({
 }) {
   const isMe = audience === '나';
   const data = isMe ? mySummary : familySummary;
-  const titleText = isMe ? '나의 챌린지 현황' : '가족 챌린지 현황';
+  const titleText = isMe ? '나의 챌린지 현황' : '우리 가족 챌린지 현황';
 
   return (
     <View style={styles.myChallengeSection}>
@@ -387,109 +229,38 @@ function MyChallengeSection({
   );
 }
 
-/* ===== 진행중 카드: 예전 디자인(퍼센트 말풍선) ===== */
-
-// challengeId 별 기본 단위 매핑
-function getUnitFromChallengeId(id: string): string {
-  switch (id) {
-    case 'daily_water_2':
-      return '잔';
-    case 'speed_dishwasher':
-      return '회';
-    case 'monthly_heating':
-      return 'kWh';
-    default:
-      return ''; // 단위 없음
-  }
-}
-
-type ChallengeCardVariant = 'water' | 'heating' | 'dishwasher' | 'default';
-
-function getVariantFromChallengeId(id: string): ChallengeCardVariant {
-  switch (id) {
-    case 'daily_water_2':
-      return 'water';
-    case 'monthly_heating':
-      return 'heating';
-    case 'speed_dishwasher':
-      return 'dishwasher';
-    default:
-      return 'default';
-  }
-}
-
-function ChallengeCard({
-  id,
+function ChallengeCardv2({
   category,
   type,
   title,
+  badgeText,
   progressRatio,
-  currentValue,
-  targetValue,
-  unit,
   onPressDetail,
-  variant = 'default',
 }: {
-  id: string;
   category: string;
   type: string;
   title: string;
+  badgeText: string;
   progressRatio: number;
-  currentValue?: number;
-  targetValue?: number;
-  unit?: string;
   onPressDetail?: () => void;
-  variant?: ChallengeCardVariant;
 }) {
-  type CardTheme = {
-    progressColor?: string;
-  };
+  const hasProgress = progressRatio > 0;
+  const [barWidth, setBarWidth] = useState(0);
+  const [isTitleMultiLine, setIsTitleMultiLine] = useState(false);
 
-  const getCardTheme = (v: ChallengeCardVariant): CardTheme => {
-    switch (v) {
-      case 'water':
-      case 'heating':
-      case 'dishwasher':
-        return {
-          progressColor: '#5E75FD',
-        };
-      default:
-        return {
-          progressColor: '#5E75FD',
-        };
-    }
-  };
-
-  const theme = getCardTheme(variant);
-  const clamped = Math.max(0, Math.min(progressRatio, 1));
-  const bubbleLeftPct = clamped === 0 ? 5 : clamped * 100; // 0%일 때는 막대 맨 왼쪽에서 조금 떨어진 위치
-
-  // 🔹 버블 안에 들어갈 텍스트
-  const cur = currentValue ?? 0;
-  const tgt = targetValue ?? 0;
-  const effectiveUnit = unit && unit !== '' ? unit : getUnitFromChallengeId(id);
-
-  let bubbleText: string;
-
-  if (!effectiveUnit) {
-    // 단위가 진짜 아무것도 없으면 퍼센트로 fallback
-    bubbleText = `${Math.round(clamped * 100)}%`;
-  } else if (effectiveUnit === '잔' || effectiveUnit === '회') {
-    // 잔/회 → "1/2잔"
-    bubbleText =
-      tgt > 0 ? `${cur}/${tgt}${effectiveUnit}` : `${cur}${effectiveUnit}`;
-  } else if (effectiveUnit.toLowerCase() === 'kwh') {
-    // kWh → "0.8 kWh"
-    bubbleText = `${cur.toFixed(1)} ${effectiveUnit}`;
-  } else {
-    // 기타 단위 → "현재/목표단위"
-    bubbleText =
-      tgt > 0 ? `${cur}/${tgt}${effectiveUnit}` : `${cur}${effectiveUnit}`;
-  }
+  const clampedRatio = Math.max(0, Math.min(progressRatio, 1));
+  const bubbleWidth = 60; // 말풍선 대략 가로
+  const bubbleCenter = barWidth * clampedRatio;
+  const bubbleLeftRaw = bubbleCenter - bubbleWidth / 2;
+  const bubbleLeft = Math.min(
+    Math.max(bubbleLeftRaw, 0),
+    Math.max(barWidth - bubbleWidth, 0),
+  );
 
   return (
-    <View style={styles.challengeCard}>
+    <View style={styles.challengeCard2}>
       <View style={styles.challengeCardHeader}>
+        {/* 카테고리(절약/가사/헬스) | duration */}
         <Text style={styles.challengeMetaText}>{category}</Text>
         <View style={styles.metaDivider} />
         <Text style={styles.challengeMetaText}>{type}</Text>
@@ -505,33 +276,53 @@ function ChallengeCard({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.challengeTitle}>{title}</Text>
+      <Text
+        style={styles.challengeTitle}
+        numberOfLines={2}
+        ellipsizeMode="tail"
+        onTextLayout={(e) => {
+          const lineCount = e.nativeEvent.lines.length;
+          console.log('[ChallengeCardv2] title lineCount =', lineCount, title);
+          if (lineCount > 1 && !isTitleMultiLine) {
+            setIsTitleMultiLine(true);
+          }
+        }}
+      >
+        {title}
+      </Text>
 
-      <View style={styles.progressBarContainer}>
-        <View style={styles.progressBarBg}>
-          <View
-            style={[
-              styles.progressBarFill,
-              {
-                width: `${clamped * 100}%`,
-                backgroundColor: theme.progressColor,
-              },
-            ]}
-          />
-        </View>
-
-        {/* ✅ 버블용 래퍼: 이 래퍼의 가운데가 게이지 위치 */}
+      {/* 바 + 말풍선 같이 정렬 */}
+      <View
+        style={[
+          styles.progressContainer,
+          isTitleMultiLine && styles.progressContainerTight,
+        ]}
+      >
         <View
-          style={[
-            styles.cardProgressBubbleWrapper,
-            { left: `${bubbleLeftPct}%` },
-          ]}
+          style={styles.progressBarBg}
+          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
         >
-          <View style={styles.cardProgressBubble}>
-            <Text style={styles.cardProgressBubbleText}>{bubbleText}</Text>
-          </View>
-          <View style={styles.cardProgressBubbleTail} />
+          {hasProgress && (
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: barWidth * clampedRatio },
+              ]}
+            />
+          )}
         </View>
+
+        {hasProgress && barWidth > 0 && (
+          <View style={[styles.progressBubble, { left: bubbleLeft }]}>
+            <View style={styles.badge2}>
+              <Text style={styles.badgeText2}>{badgeText}</Text>
+            </View>
+            <Image
+              source={require('../../assets/images/Polygon2.png')}
+              style={styles.badgeTriangle2}
+            />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -539,10 +330,10 @@ function ChallengeCard({
 
 function ChallengeProgressSection({
   items,
-  onPressDetail,
+  onPressRelayDetail,
 }: {
   items: ChallengeItem[];
-  onPressDetail: (id: string) => void;
+  onPressRelayDetail: (challenge: ChallengeItem) => void;
 }) {
   return (
     <View style={styles.challengeProgressSection}>
@@ -560,90 +351,27 @@ function ChallengeProgressSection({
             진행중인 챌린지가 없어요.
           </Text>
         ) : (
-          items.map((c) => (
-            <ChallengeCard
-              key={c.id}
-              id={c.id}
-              category={getOngoingCategoryLabel(c)}
-              type={mapDurationTypeToLabel(c.durationType)}
-              title={c.title}
-              progressRatio={(c.progressPct ?? 0) / 100}
-              currentValue={c.currentValue}
-              targetValue={c.targetValue}
-              unit={c.unit}
-              variant={getVariantFromChallengeId(c.id)}
-              onPressDetail={() => onPressDetail(c.id)}
-            />
-          ))
+          items.map((c) => {
+            const cur = c.currentValue ?? 0;
+            const target = c.targetValue ?? 0;
+            const ratio = target > 0 ? cur / target : 0;
+
+            return (
+              <ChallengeCardv2
+                key={`${c.id}-${c.progressId ?? 'no-progress'}-${c.status}`}
+                category={c.domainCategory ?? '전체'}
+                type={mapDurationTypeToLabel(c.durationType)}
+                title={c.title}
+                badgeText={formatProgressBadge(c)}
+                progressRatio={Math.max(0, Math.min(ratio, 1))}
+                onPressDetail={() => onPressRelayDetail(c)}
+              />
+            );
+          })
         )}
       </ScrollView>
     </View>
   );
-}
-
-/* ===== 진행중 섹션 전용: 기간 필터 (전체/데일리/위클리/먼슬리) ===== */
-
-/*function OngoingDurationFilterRow({
-  value,
-  onChange,
-}: {
-  value: DurationFilter;
-  onChange: (v: DurationFilter) => void;
-}) {
-  const options: DurationFilter[] = ['전체', '데일리', '위클리', '먼슬리'];
-
-  return (
-    <View style={styles.ongoingFilterRow}>
-      {options.map((opt) => (
-        <TouchableOpacity
-          key={opt}
-          style={[
-            styles.ongoingFilterChip,
-            value === opt && styles.ongoingFilterChipActive,
-          ]}
-          onPress={() => onChange(opt)}
-          activeOpacity={0.8}
-        >
-          <Text
-            style={[
-              styles.ongoingFilterChipText,
-              value === opt && styles.ongoingFilterChipTextActive,
-            ]}
-          >
-            {opt}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}*/
-
-/* ===== 추천 섹션 (AI만 사용) ===== */
-
-// challengeId → 추천 카드 이미지 매핑
-function getChallengeImage(id: string) {
-  switch (id) {
-    case 'daily_water_2':
-      return require('../../assets/images/water.png');
-    case 'monthly_heating':
-      return require('../../assets/images/save.png');
-    case 'speed_dishwasher':
-    default:
-      return require('../../assets/images/dishwasher.png');
-  }
-}
-
-// challengeId → 이미지 스타일 매핑
-function getChallengeImageStyle(id: string) {
-  switch (id) {
-    case 'daily_water_2':
-      return styles.waterIcon;
-    case 'monthly_heating':
-      return styles.heatingIcon;
-    case 'speed_dishwasher':
-    default:
-      return styles.dishwasherIcon;
-  }
 }
 
 function RecommendedChallengeSection({
@@ -689,7 +417,7 @@ function RecommendedChallengeSection({
         data={items}
         horizontal
         pagingEnabled
-        keyExtractor={(item, index) => `${item.id}-${index}`}
+        keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingRight: 24 }}
         onMomentumScrollEnd={handleMomentumEnd}
@@ -714,6 +442,7 @@ function RecommendedChallengeSection({
               </TouchableOpacity>
 
               <View style={styles.recommendedMetaRow}>
+                {/* 왼쪽: 카테고리 | 데일리 */}
                 <Text style={styles.challengeMetaText}>
                   {item.domainCategory ?? '전체'}
                 </Text>
@@ -730,8 +459,8 @@ function RecommendedChallengeSection({
 
               <View style={styles.recommendedContentRow}>
                 <Image
-                  source={getChallengeImage(item.id)}
-                  style={getChallengeImageStyle(item.id)}
+                  source={require('../../assets/images/dishwasher.png')}
+                  style={styles.dishwasherIcon}
                 />
 
                 <View style={styles.recommendedTextCol}>
@@ -835,14 +564,14 @@ function BottomTabBar() {
   );
 }
 
-/* ================== 메인 페이지 ================== */
-
+// 메인 페이지
 export function Challenge() {
   const [showDetail, setShowDetail] = useState(false);
   const [activeRecIndex, setActiveRecIndex] = useState(0);
   const [audience, setAudience] = useState<Audience>('나');
-  const [durationFilter, _setDurationFilter] = useState<DurationFilter>('전체');
 
+  const [selectedChallenge, setSelectedChallenge] =
+    useState<ChallengeItem | null>(null);
   const [summary, setSummary] = useState({
     me: {
       totalParticipated: 0,
@@ -855,13 +584,6 @@ export function Challenge() {
       successRate: 0,
     },
   });
-  const [selectedChallengeId, setSelectedChallengeId] = useState<string | null>(
-    null,
-  );
-
-  // AI에서 들어온 추천만 표시
-  const [aiRecommended, setAiRecommended] = useState<ChallengeItem[]>([]);
-  const [_aiLoading, setAiLoading] = useState(false);
 
   const { user: appUser } = useAuthStore(); // familyId 용
 
@@ -871,8 +593,8 @@ export function Challenge() {
     hydrate,
     startChallenge,
     ongoing,
-    //completed,
-    subscribeRealtimePersonal,
+    recommended,
+    dismissRecommendation,
   } = useChallengeStore();
 
   // 디버그: 현재 로그인한 사용자 정보 출력
@@ -889,89 +611,19 @@ export function Challenge() {
     }
   }, []);
 
-  // AI 추천 불러오기
-  const loadAiRecommended = async () => {
-    try {
-      setAiLoading(true);
-      // 현재는 user_4 고정 (데모용)
-      const list = await fetchAiRecommendedChallenges('user_4');
-      console.log('[AI] recommended from API =', list);
-      setAiRecommended(list);
-    } catch (e) {
-      console.log('[loadAiRecommended] error:', e);
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
   useEffect(() => {
-    console.log('[Challenge] useEffect -> hydrate + subscribeRealtime + AI');
-    hydrate(); // 초기 로딩
-    subscribeRealtimePersonal(); // 이후부터는 실시간 반영
-    loadAiRecommended();
-  }, [hydrate, subscribeRealtimePersonal]);
+    console.log('[Challenge] useEffect -> call hydrate()');
+    hydrate();
+  }, [hydrate]);
 
-  // 진행중/완료 챌린지를 기준으로 요약 숫자 계산
-  // Challenge 컴포넌트 내부
-
+  // 디버그: 스토어 상태 출력
   useEffect(() => {
-    const fbUser = auth.currentUser;
-    const familyId = appUser?.familyId;
-
-    if (!fbUser) {
-      console.log('[Challenge] no auth.currentUser for summary');
-      setSummary({
-        me: { totalParticipated: 0, totalCompleted: 0, successRate: 0 },
-        family: { totalParticipated: 0, totalCompleted: 0, successRate: 0 },
-      });
-      return;
-    }
-
-    console.log(
-      '[Challenge] subscribe summary for uid =',
-      fbUser.uid,
-      'familyId =',
-      familyId,
-    );
-
-    // 나 요약 실시간 구독
-    const unsubMy = challengeService.subscribeMySummary(
-      fbUser.uid,
-      (meSummary) => {
-        setSummary((prev) => ({
-          ...prev,
-          me: meSummary,
-        }));
-      },
-    );
-
-    // 가족 요약 실시간 구독 (familyId 있을 때만)
-    let unsubFamily: (() => void) | undefined;
-
-    if (familyId) {
-      unsubFamily = challengeService.subscribeFamilySummary(
-        familyId,
-        (familySummary) => {
-          setSummary((prev) => ({
-            ...prev,
-            family: familySummary,
-          }));
-        },
-      );
-    } else {
-      // familyId 없으면 가족은 0으로 초기화
-      setSummary((prev) => ({
-        ...prev,
-        family: { totalParticipated: 0, totalCompleted: 0, successRate: 0 },
-      }));
-    }
-
-    // cleanup
-    return () => {
-      unsubMy();
-      if (unsubFamily) unsubFamily();
-    };
-  }, [appUser?.familyId]);
+    console.log('🟢 [Challenge] store snapshot');
+    console.log('ongoing length =', ongoing.length);
+    // console.log('ongoing =', ongoing);
+    console.log('recommended length =', recommended.length);
+    // console.log('recommended =', recommended);
+  }, [ongoing, recommended]);
 
   const onCategoryChange = (filter: Filter) => {
     console.log('📌 onCategoryChange:', filter);
@@ -979,64 +631,57 @@ export function Challenge() {
     hydrate();
   };
 
-  // 진행중 & 추천 공통 필터 (audience + domainCategory)
-  const matchesAudienceAndCategory = (c: ChallengeItem) => {
-    if (c.category !== audience) return false;
-    if (currentFilter === '전체') return true;
-    return c.domainCategory === currentFilter;
-  };
+  // 나 & 우리 가족 챌린지 요약 통계 로드
+  useEffect(() => {
+    const fbUser = auth.currentUser;
+    const familyId = appUser?.familyId;
 
-  // 진행중: audience + 카테고리 + 기간 필터
-  const filteredOngoing = ongoing
-    .filter((c) => c.status === 'ongoing')
-    .filter(matchesAudienceAndCategory)
-    .filter((c) => {
-      if (durationFilter === '전체') return true;
-      if (durationFilter === '데일리') return c.durationType === 'daily';
-      if (durationFilter === '위클리') return c.durationType === 'weekly';
-      if (durationFilter === '먼슬리') return c.durationType === 'monthly';
-      return true;
-    });
-
-  // 진행중 챌린지들의 id 집합
-  const ongoingIds = new Set(filteredOngoing.map((c) => c.id));
-
-  // 추천: AI 추천 + 진행중과 중복 제거
-  const filteredRecommended = aiRecommended
-    .filter(matchesAudienceAndCategory)
-    .filter((c) => !ongoingIds.has(c.id));
-
-  const handlePressStart = async (challengeId: string) => {
-    const user = auth.currentUser;
-
-    if (!user) {
-      Alert.alert(
-        '로그인이 필요해요',
-        '챌린지를 시작하려면 먼저 로그인해주세요.',
-        [
-          { text: '취소', style: 'cancel' },
-          {
-            text: '로그인하러 가기',
-            onPress: () => {
-              router.push('/login');
-            },
-          },
-        ],
-      );
+    if (!fbUser) {
+      console.log('[Challenge] no auth.currentUser, skip summary');
       return;
     }
 
-    try {
-      await startChallenge(challengeId);
-      await hydrate();
-    } catch (e) {
-      console.log('[Challenge] startChallenge error:', e);
-      Alert.alert(
-        '챌린지 시작 오류',
-        '챌린지를 시작하는 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
-      );
-    }
-  };
+    (async () => {
+      try {
+        const me = await challengeService.getMySummary(fbUser.uid);
+
+        let family = {
+          totalParticipated: 0,
+          totalCompleted: 0,
+          successRate: 0,
+        };
+
+        if (familyId) {
+          family = await challengeService.getFamilySummary(familyId);
+        } else {
+          console.log('[Challenge] no familyId, skip family summary');
+        }
+
+        setSummary({ me, family });
+      } catch (e) {
+        console.log('[Challenge] get summary ERROR:', e);
+      }
+    })();
+  }, [appUser?.familyId]);
+
+  // 1) 진행중: audience + currentFilter 둘 다 적용
+  const filteredOngoing = ongoing.filter((c) => {
+    // 나/가족
+    if (c.category !== audience) return false;
+
+    // 전체면 카테고리 필터 패스
+    if (currentFilter === '전체') return true;
+
+    // 절약/가사/헬스 비교
+    return c.domainCategory === currentFilter;
+  });
+
+  // 2) 추천: audience + currentFilter 둘 다 적용
+  const filteredRecommended = recommended.filter((c) => {
+    if (c.category !== audience) return false;
+    if (currentFilter === '전체') return true;
+    return c.domainCategory === currentFilter;
+  });
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -1066,23 +711,18 @@ export function Challenge() {
 
           <ChallengeProgressSection
             items={filteredOngoing}
-            onPressDetail={(id) => {
-              setSelectedChallengeId(id);
+            onPressRelayDetail={(challenge) => {
+              setSelectedChallenge(challenge); // 어떤 챌린지인지 기억
               setShowDetail(true);
             }}
           />
 
           <RecommendedChallengeSection
             items={filteredRecommended}
-            onPressStart={handlePressStart}
+            onPressStart={startChallenge}
             onIndexChange={setActiveRecIndex}
-            onDismiss={(id) => {
-              setAiRecommended((prev) => prev.filter((c) => c.id !== id));
-            }}
-            onRefresh={() => {
-              hydrate();
-              loadAiRecommended();
-            }}
+            onDismiss={dismissRecommendation}
+            onRefresh={hydrate}
           />
         </View>
       </ScrollView>
@@ -1092,11 +732,11 @@ export function Challenge() {
       />
       <BottomTabBar />
 
-      {showDetail && selectedChallengeId && (
+      {showDetail && selectedChallenge && (
         <View style={styles.detailSheetWrapper}>
           <ChallengeDetail
             onClose={() => setShowDetail(false)}
-            challengeId={selectedChallengeId}
+            challengeId={selectedChallenge.id}
             from="ongoing"
             audience={audience}
             category={currentFilter}
@@ -1106,8 +746,6 @@ export function Challenge() {
     </SafeAreaView>
   );
 }
-
-/* ================== 스타일 ================== */
 
 const styles = StyleSheet.create({
   safe: {
@@ -1123,7 +761,7 @@ const styles = StyleSheet.create({
   main: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 30,
+    paddingHorizontal: 30, // main 위치 x=30
     paddingTop: 20,
     paddingBottom: 16,
   },
@@ -1188,6 +826,7 @@ const styles = StyleSheet.create({
     minHeight: 33,
     justifyContent: 'center',
     alignItems: 'center',
+    // 그림자 (iOS)
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
@@ -1220,7 +859,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
     fontWeight: '500',
   },
+  // 진행중인 챌린지 전용
   progressSectionTitle: {
+    // 여기서 원하는 것만 덮어쓰기
+    // 예시) 색, 마진, 폰트 굵기 등
     marginBottom: -12,
     color: '#353535',
     marginLeft: 20,
@@ -1247,6 +889,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // 그림자
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
@@ -1276,31 +919,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#7B7B7B',
   },
 
-  /* 진행중 기간 필터 */
-  ongoingFilterRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    marginLeft: 6,
-  },
-  ongoingFilterChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#F4F4F4',
-    marginRight: 8,
-  },
-  ongoingFilterChipActive: {
-    backgroundColor: '#353535',
-  },
-  ongoingFilterChipText: {
-    fontSize: 12,
-    fontFamily: 'Roboto',
-    color: '#7B7B7B',
-  },
-  ongoingFilterChipTextActive: {
-    color: '#FFFFFF',
-  },
-
   /* 진행중인 챌린지 */
   challengeProgressSection: {
     marginBottom: -10,
@@ -1313,8 +931,8 @@ const styles = StyleSheet.create({
     paddingLeft: 20,
   },
 
-  challengeCard: {
-    width: 160,
+  challengeCard2: {
+    width: 135,
     height: 108,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
@@ -1322,12 +940,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 10,
+    // 그림자
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 4,
   },
+
   challengeCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1337,7 +957,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#7B7B7B',
     fontFamily: 'Roboto',
-    marginLeft: 2,
   },
   metaDivider: {
     width: 1,
@@ -1346,73 +965,69 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   chevronIcon: {
-    width: 15,
+    width: 15, // 아이콘 크기 조정 (필요에 따라 10~16)
     height: 15,
-    tintColor: '#7B7B7B',
-    resizeMode: 'contain',
+    tintColor: '#7B7B7B', // 색상 변경 (원본 그대로 쓰려면 이 줄 삭제)
+    resizeMode: 'contain', // 비율 유지
   },
+
   challengeTitle: {
     fontSize: 13,
     color: '#353535',
-    marginBottom: 22,
     textAlign: 'center',
     alignSelf: 'center',
     fontFamily: 'Roboto',
     fontWeight: '500',
   },
-
-  progressBarContainer: {
-    marginLeft: 10,
-    marginRight: 10,
+  progressContainer: {
     marginTop: 8,
+    paddingHorizontal: 8,
+    height: 32,
+    justifyContent: 'flex-end',
     position: 'relative',
   },
+  progressContainerTight: {
+    marginTop: -5, // 값 조정해서 맞추기
+  },
+
   progressBarBg: {
     height: 9,
-    width: '100%',
     borderRadius: 10,
     backgroundColor: '#F6F6F6',
     overflow: 'hidden',
   },
+
   progressBarFill: {
     height: '100%',
     borderRadius: 10,
     backgroundColor: '#5E75FD',
   },
-  cardProgressBubbleWrapper: {
+
+  progressBubble: {
     position: 'absolute',
-    bottom: 12, // 게이지 위로 띄우는 높이
+    bottom: 9 + 4, // 바 위로 살짝 띄우기
+    width: 80,
     alignItems: 'center',
-    transform: [{ translateX: -24 }],
   },
 
-  cardProgressBubble: {
+  badge2: {
     backgroundColor: '#5E75FD',
     borderRadius: 30,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 19,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
-  cardProgressBubbleText: {
+
+  badgeTriangle2: {
+    width: 10,
+    height: 8,
+    marginTop: -1,
+    resizeMode: 'contain',
+  },
+
+  badgeText2: {
+    fontSize: 10,
     color: '#FFFFFF',
     fontFamily: 'Roboto',
-    fontSize: 9,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 9,
-  },
-  cardProgressBubbleTail: {
-    marginTop: -1,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 3,
-    borderRightWidth: 3,
-    borderTopWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#5E75FD',
   },
 
   /* 추천 챌린지 */
@@ -1443,6 +1058,7 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
+    // 그림자
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
@@ -1451,19 +1067,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 23,
     paddingVertical: 14,
   },
+
   deleteButton: {
     position: 'absolute',
     top: 8,
     right: 12,
     padding: 4,
-    zIndex: 10,
+    zIndex: 10, // 다른 요소 위로 오게
   },
+
   deleteIcon: {
     width: 11,
     height: 11,
-    tintColor: '#7B7B7B',
+    tintColor: '#7B7B7B', // 필요시 색상 변경, 원본색 유지하려면 제거
     resizeMode: 'contain',
   },
+
   recommendedMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1472,34 +1091,20 @@ const styles = StyleSheet.create({
   metaIcon: {
     width: 11,
     height: 11,
-    marginHorizontal: 4,
+    marginHorizontal: 4, // 텍스트와 약간의 간격
     resizeMode: 'contain',
-    tintColor: '#7B7B7B',
+    tintColor: '#7B7B7B', // 아이콘 색 (필요 없으면 제거)
   },
   recommendedContentRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   dishwasherIcon: {
-    width: 45,
-    height: 50,
+    width: 38,
+    height: 43,
     resizeMode: 'contain',
-    marginRight: 15,
+    marginRight: 30,
     marginLeft: 16,
-  },
-  waterIcon: {
-    width: 64,
-    height: 64,
-    resizeMode: 'contain',
-    marginRight: 10,
-    marginTop: -9,
-  },
-  heatingIcon: {
-    width: 60,
-    height: 60,
-    resizeMode: 'contain',
-    marginRight: 10,
-    marginTop: -7,
   },
   recommendedTextCol: {
     flex: 1,
@@ -1537,17 +1142,20 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 24,
   },
+
   dotBase: {
-    width: 6,
+    width: 6, // 도트 크기
     height: 6,
-    borderRadius: 3,
+    borderRadius: 3, // 완전한 동그라미
     marginHorizontal: 4,
   },
+
   dotActive: {
-    backgroundColor: '#8C8C8C',
+    backgroundColor: '#8C8C8C', // 가운데 진한 회색
   },
+
   dotInactive: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#E0E0E0', // 양쪽 연한 회색
   },
 
   bottomTabBar: {
@@ -1564,10 +1172,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
+
   tabButton: {
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
+
   tabIcon: {
     width: 50,
     height: 50,
@@ -1577,7 +1187,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 1,
+    bottom: 1, // 탭바 위
     alignItems: 'center',
   },
 });
