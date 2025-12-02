@@ -333,7 +333,7 @@ function ChallengeProgressSection({
   onPressRelayDetail,
 }: {
   items: ChallengeItem[];
-  onPressRelayDetail: () => void;
+  onPressRelayDetail: (challenge: ChallengeItem) => void;
 }) {
   return (
     <View style={styles.challengeProgressSection}>
@@ -351,24 +351,23 @@ function ChallengeProgressSection({
             진행중인 챌린지가 없어요.
           </Text>
         ) : (
-          items.map((c) => (
-            <ChallengeCardv2
-              key={c.id}
-              // 카테고리: 나/가족 → 절약/헬스/가사
-              category={c.domainCategory ?? '전체'}
-              // durationType 기반 라벨
-              type={mapDurationTypeToLabel(c.durationType)}
-              title={c.title}
-              // 말풍선 텍스트: current/target + unit
-              badgeText={formatProgressBadge(c)}
-              // progressPct 기준 (0~1)
-              progressRatio={Math.max(
-                0,
-                Math.min((c.progressPct ?? 0) / 100, 1),
-              )}
-              onPressDetail={onPressRelayDetail}
-            />
-          ))
+          items.map((c) => {
+            const cur = c.currentValue ?? 0;
+            const target = c.targetValue ?? 0;
+            const ratio = target > 0 ? cur / target : 0;
+
+            return (
+              <ChallengeCardv2
+                key={c.id}
+                category={c.domainCategory ?? '전체'}
+                type={mapDurationTypeToLabel(c.durationType)}
+                title={c.title}
+                badgeText={formatProgressBadge(c)}
+                progressRatio={Math.max(0, Math.min(ratio, 1))}
+                onPressDetail={() => onPressRelayDetail(c)}
+              />
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -571,6 +570,8 @@ export function Challenge() {
   const [activeRecIndex, setActiveRecIndex] = useState(0);
   const [audience, setAudience] = useState<Audience>('나');
 
+  const [selectedChallenge, setSelectedChallenge] =
+    useState<ChallengeItem | null>(null);
   const [summary, setSummary] = useState({
     me: {
       totalParticipated: 0,
@@ -710,7 +711,10 @@ export function Challenge() {
 
           <ChallengeProgressSection
             items={filteredOngoing}
-            onPressRelayDetail={() => setShowDetail(true)}
+            onPressRelayDetail={(challenge) => {
+              setSelectedChallenge(challenge); // 어떤 챌린지인지 기억
+              setShowDetail(true);
+            }}
           />
 
           <RecommendedChallengeSection
@@ -728,12 +732,11 @@ export function Challenge() {
       />
       <BottomTabBar />
 
-      {showDetail && (
+      {showDetail && selectedChallenge && (
         <View style={styles.detailSheetWrapper}>
           <ChallengeDetail
             onClose={() => setShowDetail(false)}
-            // 아래 네 개는 일단 더미값으로만 넘겨도 됨
-            challengeId="dummy-id"
+            challengeId={selectedChallenge.id}
             from="ongoing"
             audience={audience}
             category={currentFilter}

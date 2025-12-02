@@ -86,7 +86,6 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
     try {
       console.log('[store.hydrate] START');
 
-      // !! getAllOngoing으로 다 받아오고 -> 나/가족으로 필터링
       // 0) authStore에서 uid / familyId 가져오기 + Firebase auth fallback
       const { user, token } = useAuthStore.getState();
       const fbUser = auth.currentUser;
@@ -139,15 +138,17 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         const progressPct: number =
           typeof d.progressPct === 'number'
             ? d.progressPct
-            : d.targetValue
+            : targetValue
               ? Math.min(
-                  Math.floor(((d.currentValue ?? 0) / d.targetValue) * 100),
+                  Math.floor(((currentValue ?? 0) / targetValue) * 100),
                   100,
                 )
               : 0;
 
-        const rewardPoints: number =
-          d.rewardPoints ?? d.totalPersonalPoints ?? d.totalFamilyPoints ?? 0;
+        // 진행 문서에서는 rewardPersonalPoints / rewardFamilyPoints 기준으로 보상 표시
+        const rewardPoints: number = isPersonal
+          ? (d.rewardPersonalPoints ?? d.basePersonalPoints ?? 0)
+          : (d.rewardFamilyPoints ?? d.baseFamilyPoints ?? 0);
 
         return {
           id: d.challengeId,
@@ -289,14 +290,26 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
 
   /* -----------------------------
       챌린지 완료 처리
+      - challengeService.completeChallenge
+        -> progress + contributions + user/family 전역 포인트
+        -> { rewardPoints, category, title, isCompleted }
   ----------------------------- */
   completeChallenge: async (id) => {
     const res = await challengeService.completeChallenge(id);
-    const { rewardPoints, category, title } = res;
+    const { rewardPoints, category, title, isCompleted } = res;
 
     const state = get();
     const rewardStore = useRewardStore.getState();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+
+    // 아직 targetValue에 도달하지 못한 상태에서 호출되었다면 아무 것도 하지 않음
+    if (!isCompleted || rewardPoints <= 0) {
+      console.log(
+        '[useChallengeStore.completeChallenge] not completed yet, no reward',
+        { id, rewardPoints, category, title },
+      );
+      return;
+    }
 
     if (category === '나') {
       rewardStore.setMyReward({
