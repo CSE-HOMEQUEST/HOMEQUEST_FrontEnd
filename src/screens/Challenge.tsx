@@ -120,7 +120,7 @@ const formatTimeSlotLabel = (timeSlot?: string): string => {
 function getChallengeNameFromId(challengeId: string) {
   switch (challengeId) {
     case 'daily_water_2':
-      return '아침·저녁 물 두 잔 마시기';
+      return '물 한 잔 마시기';
     case 'monthly_heating':
       return '한 달간 난방 절약';
     case 'speed_dishwasher':
