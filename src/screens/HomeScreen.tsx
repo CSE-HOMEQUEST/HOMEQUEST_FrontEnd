@@ -1,23 +1,120 @@
 // src/screens/Home.tsx
-import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Image,
+  ImageStyle,
+  Modal,
   SafeAreaView,
   StyleSheet,
   Text,
-  View,
-  Image,
   TouchableOpacity,
-  ImageStyle,
-  Modal,
+  View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
+
+import { useChallengeStore } from '@/src/store/useChallengeStore';
+
+/* ───── AI 추천 응답 타입 ───── */
+type ChallengeInfoFromAI = {
+  challengeId: string;
+  category: string;
+  mode?: string;
+  freq?: number;
+  durationType?: string;
+  deviceType?: string;
+  progressType?: string;
+  adj_score?: number;
+  score?: number;
+};
+
+type SpeedInfoFromAI = {
+  challengeId: string;
+  category: string;
+  userId: string;
+  notificationTime: string; // "17:00:00"
+  weekday: number;
+  freq: number;
+  familyPoints: number;
+  personalPoints: number;
+  adj_score: number;
+  score: number;
+};
+
+type TodayReportResponse = {
+  userId: string;
+  energyHigh?: boolean;
+  main_auc?: number;
+  speed_auc?: number;
+  daily?: ChallengeInfoFromAI;
+  monthly?: ChallengeInfoFromAI;
+  speed?: SpeedInfoFromAI;
+};
+
+// AI 박스 안에 들어갈 한글 문장 생성
+function formatAiAnalysis(data: TodayReportResponse): string {
+  const lines: string[] = [];
+
+  if (typeof data.energyHigh === 'boolean') {
+    if (data.energyHigh) {
+      lines.push(
+        '오늘은 에너지 사용량이 평소보다 조금 높게 나타났어요.',
+        '특히 난방 기기 사용량이 증가한 것으로 보여요.',
+        '에너지 절약 챌린지를 함께 시도해보는 건 어떨까요?',
+      );
+    } else {
+      lines.push(
+        '오늘은 에너지 사용량이 비교적 안정적으로 유지되고 있어요.',
+        '지금처럼만 유지하면 좋은 결과가 나올 거예요. 조금만 더 힘내봐요.',
+      );
+    }
+  } else {
+    lines.push(
+      '오늘 하루 사용 데이터를 기반으로 패턴을 분석하고 있어요.',
+      '조금만 기다리면 더 정교한 분석 결과를 보여드릴게요.',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/* ────────────── FastAPI 호출 설정 ────────────── */
+const AI_API_URL = 'https://callai-jb7eegn52q-du.a.run.app';
+
+async function fetchTodayReportFromAPI(userId: string): Promise<string> {
+  try {
+    const res = await fetch(AI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        top_k: 3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.log('[AI API ERROR]', res.status, errorText);
+      throw new Error(errorText || `status ${res.status}`);
+    }
+
+    const data: TodayReportResponse = await res.json();
+    console.log('[AI API RAW DATA]', data);
+    return formatAiAnalysis(data);
+  } catch (err) {
+    console.error('[fetchTodayReportFromAPI] error:', err);
+    throw err;
+  }
+}
 
 /* ────────────── Header ────────────── */
 function Header() {
@@ -40,7 +137,7 @@ function Header() {
   );
 }
 
-/* ────────────── Room View (확대 / 이동 가능) ────────────── */
+/* ────────────── Room View (확대 / 이동 + glow) ────────────── */
 function RoomBlock() {
   const scale = useSharedValue(0.8);
   const baseScale = useSharedValue(1);
@@ -49,6 +146,29 @@ function RoomBlock() {
   const lastTranslateX = useSharedValue(0);
   const lastTranslateY = useSharedValue(0);
   const navigation = useNavigation<NavigationProp<any>>();
+
+  // glow
+  const glowOpacity = useSharedValue(0);
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+  }));
+
+  const triggerGlow = () => {
+    glowOpacity.value = 0;
+    glowOpacity.value = withTiming(0.8, { duration: 1000 }, () => {
+      glowOpacity.value = withTiming(0, { duration: 5000 });
+    });
+  };
+
+  const lastCompleted = useChallengeStore((s) => s.effects.lastCompleted);
+  const resetEffect = useChallengeStore((s) => s.resetEffect);
+  useEffect(() => {
+    if (lastCompleted === 'jin') {
+      triggerGlow();
+      resetEffect();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastCompleted, resetEffect]);
 
   // Pinch & Pan Gesture 설정
   const pinch = Gesture.Pinch()
@@ -102,7 +222,7 @@ function RoomBlock() {
           resizeMode="cover"
         />
 
-        {/* 캐릭터 */}
+        {/* 캐릭터 동 */}
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigation.navigate('Character')}
@@ -115,11 +235,26 @@ function RoomBlock() {
           />
         </TouchableOpacity>
 
+        {/* 캐릭터 진 + glow */}
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => navigation.navigate('Character_2')}
           style={styles.character2Touchable}
         >
+          <Animated.Image
+            source={require('../../assets/rooms/glow_2.png')}
+            style={[
+              {
+                position: 'absolute',
+                width: 150,
+                height: 150,
+                left: -40,
+                top: -40,
+              },
+              glowStyle,
+            ]}
+            resizeMode="contain"
+          />
           <Image
             source={require('../../assets/rooms/jin.png')}
             style={styles.character2}
@@ -185,10 +320,70 @@ function HelpIcons({ onReportPress }: { onReportPress: () => void }) {
 function TodayReportPopup({
   visible,
   onClose,
+  aiText,
+  aiLoading,
+  aiError,
+  onRetry,
 }: {
   visible: boolean;
   onClose: () => void;
+  aiText: string;
+  aiLoading: boolean;
+  aiError: string | null;
+  onRetry: () => void;
 }) {
+  const completed = useChallengeStore((s) => s.completed);
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  endOfWeek.setHours(23, 59, 59, 999);
+
+  const toDate = (d?: string) => (d ? new Date(d) : null);
+
+  // 이번 달 가족 챌린지 중 가장 최근 1개
+  const monthlyFamily = [...completed]
+    .filter((c) => {
+      if (c.category !== '가족' || !c.completedAt) return false;
+      const d = toDate(c.completedAt);
+      if (!d) return false;
+      return d.getFullYear() === year && d.getMonth() === month;
+    })
+    .slice(-1)[0];
+
+  // 이번 주 가족 챌린지 중 가장 최근 1개
+  const weeklyFamily = [...completed]
+    .filter((c) => {
+      if (c.category !== '가족' || !c.completedAt) return false;
+      const d = toDate(c.completedAt);
+      if (!d) return false;
+      return d >= startOfWeek && d <= endOfWeek;
+    })
+    .slice(-1)[0];
+
+  // 오늘 개인 챌린지 중 가장 최근 1개
+  const todayPersonal = [...completed]
+    .filter((c) => c.category === '나' && c.completedAt === todayStr)
+    .slice(-1)[0];
+
+  const renderAiText = () => {
+    if (aiLoading) {
+      return 'AI 패턴 분석을 불러오는 중입니다...';
+    }
+    if (aiError) {
+      return `${aiError}\n\n다시 시도해보세요.`;
+    }
+    return aiText;
+  };
+
   return (
     <Modal transparent animationType="fade" visible={visible}>
       <View style={styles.overlay}>
@@ -198,47 +393,98 @@ function TodayReportPopup({
           {/* AI 분석 */}
           <View style={styles.aiBox}>
             <Text style={styles.aiLabel}>AI 패턴 분석 :</Text>
-            <Text style={styles.aiText}>
-              누나는 월요일마다 늦게 집에 들어오네요.{'\n'}
-              아침 설거지로 가사 챌린지를 미리 수행해보는 건{'\n'}어떨까요?
-            </Text>
+            <Text style={styles.aiText}>{renderAiText()}</Text>
+
+            {aiError && (
+              <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+                <Text style={styles.retryText}>다시 시도</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.line2} />
 
-          {/* 챌린지 요약 */}
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              이번 달의 가족 챌린지 : 난방 절약 성공!
-            </Text>
-            <Text style={styles.point}>+40p</Text>
-          </View>
+          {/* 이번 달 가족 챌린지 */}
+          {monthlyFamily ? (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 달의 가족 챌린지 : {monthlyFamily.title} 성공!
+              </Text>
+              <Text style={styles.point}>
+                +{monthlyFamily.rewardPoints ?? 0}p
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                이번 달의 가족 챌린지 : 아직 완료된 챌린지가 없습니다.
+              </Text>
+              <Text style={styles.point}>+0p</Text>
+            </View>
+          )}
 
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              이번 주의 가족 챌린지 : {'\n'}릴레이 로봇청소기 돌리기 성공
-            </Text>
-            <Text style={styles.point}>+50p</Text>
-          </View>
+          {/* 이번 주 가족 챌린지 (스피드/주간 느낌으로 표기) */}
+          {weeklyFamily ? (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 스피드 챌린지 : {'\n'}
+                {weeklyFamily.title} 성공!
+              </Text>
+              <Text style={styles.point}>
+                +{weeklyFamily.rewardPoints ?? 0}p
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 스피드 챌린지 : 아직 완료된 챌린지가 없습니다.
+              </Text>
+              <Text style={styles.point}>+0p</Text>
+            </View>
+          )}
 
-          <View style={styles.challengeBox}>
-            <Image
-              source={require('../../assets/main_icon/Subtract.png')}
-              style={styles.challengeIcon}
-            />
-            <Text style={styles.challengeText}>
-              오늘의 개인 챌린지 : 아침에 물 한잔 마시기
-            </Text>
-            <Text style={styles.point}>+10p</Text>
-          </View>
+          {/* 오늘 개인 챌린지 */}
+          {todayPersonal ? (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 개인 챌린지 : {todayPersonal.title} 성공!
+              </Text>
+              <Text style={styles.point}>
+                +{todayPersonal.rewardPoints ?? 0}p
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.challengeBox}>
+              <Image
+                source={require('../../assets/main_icon/Subtract.png')}
+                style={styles.challengeIcon}
+              />
+              <Text style={styles.challengeText}>
+                오늘의 개인 챌린지 : 아직 완료된 챌린지가 없습니다.
+              </Text>
+              <Text style={styles.point}>+0p</Text>
+            </View>
+          )}
 
           {/* 확인 버튼 */}
           <TouchableOpacity style={styles.confirmButton} onPress={onClose}>
@@ -300,6 +546,33 @@ function BottomTabBar() {
 /* ────────────── Home Screen ────────────── */
 export default function Home() {
   const [reportVisible, setReportVisible] = useState(false);
+  const [aiText, setAiText] = useState(
+    '오늘 하루 데이터 기반으로 패턴을 분석하고 있어요.',
+  );
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const loadTodayReport = async () => {
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const text = await fetchTodayReportFromAPI('user_4');
+      setAiText(text);
+    } catch (e) {
+      console.log(e);
+      setAiError('AI 요청 중 오류가 발생했습니다.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // 모달이 열릴 때마다 AI 분석 새로 불러오기
+  useEffect(() => {
+    if (reportVisible) {
+      loadTodayReport();
+    }
+  }, [reportVisible]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -316,6 +589,10 @@ export default function Home() {
       <TodayReportPopup
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
+        aiText={aiText}
+        aiLoading={aiLoading}
+        aiError={aiError}
+        onRetry={loadTodayReport}
       />
     </SafeAreaView>
   );
@@ -381,8 +658,8 @@ const styles = StyleSheet.create({
 
   character2Touchable: {
     position: 'absolute',
-    top: 420, // 원하는 위치로 조정
-    left: 218, // 원하는 위치로 조정
+    top: 420,
+    left: 218,
     width: 65,
     height: 85,
     zIndex: 5,
@@ -448,7 +725,8 @@ const styles = StyleSheet.create({
   },
   reportCard: {
     width: 335,
-    height: 387,
+    minHeight: 387,
+    maxHeight: '80%',
     backgroundColor: '#FFFFFF',
     borderRadius: 30,
     padding: 20,
@@ -514,6 +792,7 @@ const styles = StyleSheet.create({
     color: '#000',
     flex: 1,
     textAlignVertical: 'center',
+    maxWidth: 220,
   },
   point: {
     fontFamily: 'Roboto-Medium',
@@ -530,7 +809,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#353535',
     borderRadius: 8,
     paddingVertical: 10,
-    marginTop: 8,
+    marginTop: 10,
     alignItems: 'center',
     width: 293,
     height: 43,
@@ -552,4 +831,17 @@ const styles = StyleSheet.create({
   },
   tabButton: { paddingVertical: 8, paddingHorizontal: 12 },
   tabIcon: { width: 50, height: 50 },
+
+  retryButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#EFEFEF',
+  },
+  retryText: {
+    fontSize: 12,
+    color: '#333333',
+  },
 });

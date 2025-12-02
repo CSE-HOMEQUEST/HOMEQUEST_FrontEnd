@@ -61,6 +61,12 @@ export type ChallengeProgressDoc = {
   unit?: string;
 };
 
+// 챌린지 페이지네이션 타입 (AI 추천 / 기본 추천 둘 다 동일 구조)
+export type ChallengeDtoPage = {
+  items: ChallengeDto[];
+  cursor: string | null;
+};
+
 // 시간 관련 유틸
 const formatTimeHHMMSS = (date: Date): string => {
   const h = String(date.getHours()).padStart(2, '0');
@@ -97,6 +103,59 @@ const mapDocToDto = (
     recommendedTimeSlot: d.recommendedTimeSlot as string | undefined,
   };
 };
+
+// -----------------------------
+// AI 추천 RAW 타입 & API URL
+// -----------------------------
+const AI_API_URL = 'https://callai-jb7eegn52q-du.a.run.app';
+
+type AiBaseChallenge = {
+  adj_score: number;
+  category: string; // 'health' | 'energy' | 'dishwashing' ...
+  challengeId: string; // 🔴 Firestore /challenges/{challengeId} 와 맞춘다고 가정
+  deviceType?: string;
+  durationType?: string; // 'short' | 'long' ...
+  freq?: number;
+  mode?: string; // 'daily' | 'monthly' ...
+  progressType?: string; // 'counter' | 'energy' ...
+  score: number;
+  available?: boolean;
+  cooldown_days?: number;
+};
+
+type AiDailyChallenge = AiBaseChallenge & {
+  mode?: 'daily';
+};
+
+type AiMonthlyChallenge = AiBaseChallenge & {
+  mode?: 'monthly';
+};
+
+type AiSpeedChallenge = {
+  adj_score: number;
+  category: string; // 'dishwashing'
+  challengeId: string;
+  energyKwh?: number;
+  familyPoints?: number;
+  freq?: number;
+  notif_min?: number; // 분 단위 (예: 1020 = 17 * 60)
+  notificationTime?: string; // "17:00:00"
+  personalPoints?: number;
+  score: number;
+  userId: string;
+  weekday?: number;
+};
+
+export type TodayReportResponse = {
+  daily?: AiDailyChallenge;
+  monthly?: AiMonthlyChallenge;
+  speed?: AiSpeedChallenge;
+  energyHigh?: boolean;
+  main_auc?: number;
+  speed_auc?: number;
+  userId: string;
+};
+// -----------------------------
 
 export const challengeService = {
   // 1) getPersonalOngoing: 개인 진행중
@@ -585,5 +644,91 @@ export const challengeService = {
     });
 
     return { totalParticipated, totalCompleted, successRate };
+  },
+
+  /** 🔵 AI 기반 개인화 추천: AI RAW + /challenges 템플릿 합치기 */
+  async getAiRecommended(params: { uid: string }): Promise<ChallengeDtoPage> {
+    const { uid } = params;
+
+    // 1) AI 서버 호출
+    const res = await fetch(AI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: uid,
+        top_k: 3,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.log('[AI Challenge ERROR]', res.status, text);
+      throw new Error(text || `status ${res.status}`);
+    }
+
+    const raw: TodayReportResponse = await res.json();
+    console.log('[AI API RAW DATA]', raw);
+
+    // 2) RAW에서 daily / monthly / speed를 평탄화
+    const aiList: {
+      slot: 'daily' | 'monthly' | 'speed';
+      data: AiBaseChallenge | AiSpeedChallenge;
+    }[] = [];
+
+    if (raw.daily) aiList.push({ slot: 'daily', data: raw.daily });
+    if (raw.monthly) aiList.push({ slot: 'monthly', data: raw.monthly });
+    if (raw.speed) aiList.push({ slot: 'speed', data: raw.speed });
+
+    if (aiList.length === 0) {
+      return { items: [], cursor: null };
+    }
+
+    // 3) 각 AI challengeId 에 해당하는 /challenges 템플릿 문서 읽기
+    //    🔴 여기서 challengeId === Firestore 문서 id 라고 가정
+    //    만약 다르면 중간에 매핑 함수 한 번 거쳐야 함.
+    const snaps = await Promise.all(
+      aiList.map((it) => getDoc(doc(db, 'challenges', it.data.challengeId))),
+    );
+
+    const items: ChallengeDto[] = [];
+
+    snaps.forEach((snap, idx) => {
+      const ai = aiList[idx];
+      if (!snap.exists()) {
+        console.log(
+          '[getAiRecommended] template NOT FOUND for challengeId =',
+          ai.data.challengeId,
+        );
+        return;
+      }
+
+      const base = mapDocToDto(
+        snap as QueryDocumentSnapshot<unknown, DocumentData>,
+      );
+
+      const slot = ai.slot;
+      const data = ai.data;
+
+      // speed 타입일 때만 personalPoints / familyPoints 가 들어있음
+      const speed = slot === 'speed' ? (data as AiSpeedChallenge) : undefined;
+
+      // 🔵 추천 결과 = 템플릿 + AI 메타 덮어쓰기
+      items.push({
+        ...base,
+
+        // 포인트: speed에 personalPoints/familyPoints가 있으면 그걸 우선 사용
+        basePersonalPoints:
+          speed?.personalPoints ?? base.basePersonalPoints ?? 0,
+        baseFamilyPoints: speed?.familyPoints ?? base.baseFamilyPoints ?? 0,
+
+        // 추천 시간: speed.notificationTime 이 있으면 그걸 사용, 없으면 템플릿 값 유지
+        recommendedTimeSlot:
+          speed?.notificationTime ?? base.recommendedTimeSlot,
+      });
+    });
+
+    return { items, cursor: null };
   },
 };

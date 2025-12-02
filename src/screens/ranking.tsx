@@ -675,7 +675,7 @@ export function Ranking() {
         fam_008: 1810,
         fam_009: 1940,
         fam_010: 2000,
-        fam_jinjin: 900,
+        fam_jinjin: 1400,
       };
 
       for (const [id, score] of Object.entries(defaults)) {

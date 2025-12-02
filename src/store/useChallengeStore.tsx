@@ -27,6 +27,11 @@ export type Challenge = {
   currentValue?: number;
   targetValue?: number;
   unit?: string; // '회', '잔', '분' 같은 단위
+
+  // 완료 챌린지 정보 (홈 TodayReportPopup에서 사용)
+  completedAt?: string; // 'YYYY-MM-DD'
+  // 난이도 (firebase에 level 넣어두면 읽어옴)
+  level?: 1 | 2 | 3; // easy | medium | hard로 맵핑 필요 !!
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -39,6 +44,15 @@ type State = {
   recCursor: string | null;
   loading: { init: boolean; recMore: boolean; refresh: boolean };
   error?: string | null;
+
+  // 완료된 챌린지 목록
+  completed: Challenge[];
+
+  // 효과 관련(홈 진 glow 등)
+  effects: {
+    // 마지막으로 완료된 주체: 진/동/없음
+    lastCompleted: 'jin' | 'dong' | null;
+  };
 };
 
 type Actions = {
@@ -49,6 +63,9 @@ type Actions = {
   updateProgress: (id: string, pct: number) => void;
   completeChallenge: (id: string) => Promise<void>;
   dismissRecommendation: (id: string) => Promise<void>;
+
+  // 홈 glow 리셋용
+  resetEffect: () => void;
 };
 
 const mapFsCategoryToFilter = (fsCategory?: string | null): Filter => {
@@ -72,6 +89,10 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   recCursor: null,
   loading: { init: true, recMore: false, refresh: false },
   error: null,
+  completed: [],
+  effects: {
+    lastCompleted: null,
+  },
 
   /* -----------------------------
       필터 변경
@@ -105,12 +126,25 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         uid,
         familyId,
       });
-      const recPage = await challengeService.getRecommended({
-        cursor: null,
-      });
-
       console.log('🔥 hydrate | ongoingRaw:', ongoingRaw);
-      console.log('🔥 hydrate | recommendedRaw:', recPage.items);
+
+      // 기존 추천 불러오기 주석 처리 -> AI 추천으로 대체
+      // const recPage = await challengeService.getRecommended({
+      //   cursor: null,
+      // });
+      // console.log('🔥 hydrate | recommendedRaw:', recPage.items);
+
+      // 1차 시도: AI 기반 개인화 추천
+      let recPage: { items: any[]; cursor: string | null };
+      try {
+        recPage = await challengeService.getAiRecommended({ uid });
+        console.log('🔥 hydrate | AI recommendedRaw:', recPage.items);
+      } catch (e) {
+        console.log('[store.hydrate] AI 추천 실패, 기본 추천으로 fallback:', e);
+        // 실패하면 기존 getRecommended 사용
+        recPage = await challengeService.getRecommended({ cursor: null });
+        console.log('🔥 hydrate | fallback recommendedRaw:', recPage.items);
+      }
 
       // 2) 우리 앱 Challenge 타입으로 변환
       const ongoing: Challenge[] = ongoingRaw.map((d: any) => {
@@ -300,17 +334,19 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
 
     const state = get();
     const rewardStore = useRewardStore.getState();
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-    // 아직 targetValue에 도달하지 못한 상태에서 호출되었다면 아무 것도 하지 않음
+    const todayDot = new Date().toISOString().slice(0, 10).replace(/-/g, '.'); // 히스토리용
+    const todayStr = new Date().toISOString().slice(0, 10); // completedAt 용 (YYYY-MM-DD)
+
     if (!isCompleted || rewardPoints <= 0) {
       console.log(
         '[useChallengeStore.completeChallenge] not completed yet, no reward',
-        { id, rewardPoints, category, title },
+        { id, rewardPoints, category, title, isCompleted },
       );
       return;
     }
 
+    // 포인트 업데이트는 너 코드 그대로 유지
     if (category === '나') {
       rewardStore.setMyReward({
         currentPoint: rewardStore.myPoint + rewardPoints,
@@ -320,7 +356,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
       rewardStore.addMyHistory({
         id: Date.now(),
-        date: today,
+        date: todayDot,
         label: title,
         point: rewardPoints,
         type: 'earn',
@@ -333,16 +369,47 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
       rewardStore.addFamilyHistory({
         id: Date.now(),
-        date: today,
+        date: todayDot,
         label: title,
         point: rewardPoints,
         type: 'earn',
       });
     }
 
-    set((s) => ({
-      ongoing: s.ongoing.filter((c) => c.id !== id),
-    }));
+    // ✅ completed 배열에 completedAt을 넣어줌
+    set((s) => {
+      const target = s.ongoing.find((c) => c.id === id);
+      const remaining = s.ongoing.filter((c) => c.id !== id);
+
+      const completedItem: Challenge | undefined = target
+        ? {
+            ...target,
+            status: 'completed',
+            rewardPoints,
+            completedAt: todayStr,
+          }
+        : undefined;
+
+      const nextCompleted = completedItem
+        ? [...s.completed, completedItem]
+        : s.completed;
+
+      const lastCompleted =
+        category === '나'
+          ? 'jin'
+          : category === '가족'
+            ? 'dong'
+            : s.effects.lastCompleted;
+
+      return {
+        ongoing: remaining,
+        completed: nextCompleted,
+        effects: {
+          ...s.effects,
+          lastCompleted,
+        },
+      };
+    });
   },
 
   /* -----------------------------
@@ -351,6 +418,18 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   dismissRecommendation: async (id) => {
     set((s) => ({
       recommended: s.recommended.filter((c) => c.id !== id),
+    }));
+  },
+
+  /* -----------------------------
+      효과 초기화 (홈 glow 끄기)
+  ----------------------------- */
+  resetEffect: () => {
+    set((s) => ({
+      effects: {
+        ...s.effects,
+        lastCompleted: null,
+      },
     }));
   },
 }));

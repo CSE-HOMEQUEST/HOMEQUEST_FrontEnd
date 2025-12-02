@@ -1,15 +1,79 @@
 // src/components/ChallengeDetails.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
+  Alert,
   Image,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Keyboard,
+  Platform,
 } from 'react-native';
 
-import type { Filter } from '@/src/store/useChallengeStore';
+import { useChallengeStore, type Filter } from '@/src/store/useChallengeStore';
+
+// durationType → "데일리/위클리/먼슬리"
+const mapDurationTypeToLabel = (durationType?: string): string => {
+  switch (durationType) {
+    case 'daily':
+      return '데일리';
+    case 'weekly':
+      return '위클리';
+    case 'monthly':
+      return '먼슬리';
+    default:
+      return '데일리';
+  }
+};
+
+// 기간 pill 안 텍스트 ("1일/1주/1달")
+const mapDurationTypeToPeriodLabel = (durationType?: string): string => {
+  switch (durationType) {
+    case 'daily':
+      return '1일';
+    case 'weekly':
+      return '1주';
+    case 'monthly':
+      return '1달';
+    default:
+      return '1일';
+  }
+};
+
+const getEndDateText = (durationType?: string): string => {
+  const today = new Date();
+
+  let end = new Date(today);
+
+  switch (durationType) {
+    case 'daily':
+      end.setDate(end.getDate() + 1);
+      break;
+    case 'weekly':
+      end.setDate(end.getDate() + 7);
+      break;
+    case 'monthly':
+      end.setMonth(end.getMonth() + 1);
+      break;
+    default:
+      end.setDate(end.getDate() + 1);
+  }
+
+  const month = end.getMonth() + 1;
+  const date = end.getDate();
+
+  return `${month}/${date}일까지!`;
+};
+
+// 오늘 날짜 "M/D일 완료!" 텍스트
+const getTodayCompleteText = (): string => {
+  const today = new Date();
+  const month = today.getMonth() + 1;
+  const date = today.getDate();
+  return `${month}/${date}일 완료!`;
+};
 
 const track = (event: string, params: Record<string, any>) => {
   console.log('[analytics]', event, params);
@@ -17,11 +81,8 @@ const track = (event: string, params: Record<string, any>) => {
 
 type Audience = '나' | '가족';
 
-// 상세 하단 시트
 type ChallengeDetailProps = {
   onClose: () => void;
-
-  // ✅ 로그에 쓰기 위한 메타데이터
   challengeId: string;
   from: 'ongoing' | 'recommended';
   audience: Audience; // '나' | '가족'
@@ -36,26 +97,20 @@ type CommentItem = {
   likedDefault: boolean;
 };
 
+// 자동으로 달릴 가족 댓글 템플릿
 const COMMENT_DATA: CommentItem[] = [
   {
-    id: 'c1',
-    author: '누나',
-    text: '이따가 제가 돌릴게요!',
-    likeCount: 3,
+    id: 'dad-1',
+    author: '아빠',
+    text: '그래. 딸 화이팅!',
+    likeCount: 0,
     likedDefault: false,
   },
   {
-    id: 'c2',
-    author: '아빠',
-    text: '그래. 화이팅!',
-    likeCount: 1,
-    likedDefault: true,
-  },
-  {
-    id: 'c3',
+    id: 'bro-1',
     author: '동생',
-    text: '누나만 하면 50포인트다~',
-    likeCount: 2,
+    text: '가족 등수 빨리 올리자',
+    likeCount: 0,
     likedDefault: false,
   },
 ];
@@ -68,6 +123,21 @@ const getAvatarByAuthor = (author: string) => {
       return require('../../assets/images/user2.png');
     case '동생':
       return require('../../assets/images/user3.png');
+    default:
+      return require('../../assets/images/user1.png');
+  }
+};
+
+// 챌린지 id → 로봇 이미지
+const getRobotImageByChallengeId = (id: string) => {
+  switch (id) {
+    case 'daily_water_2':
+      return require('../../assets/images/water.png');
+    case 'monthly_heating':
+      return require('../../assets/images/save.png');
+    case 'speed_dishwasher':
+    default:
+      return require('../../assets/images/dishwasher.png');
   }
 };
 
@@ -79,16 +149,81 @@ function ChallengeDetail({
   category,
 }: ChallengeDetailProps) {
   const [commentText, setCommentText] = useState('');
-  const [likedMap, setLikedMap] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    COMMENT_DATA.forEach((c) => {
-      init[c.id] = c.likedDefault;
-    });
-    return init;
-  });
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
+  const [hasTriggeredFamilyReply, setHasTriggeredFamilyReply] = useState(false);
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // 화면 진입 로그
+  // 키보드 높이
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  const { ongoing, recommended, completeChallenge } = useChallengeStore();
+
+  // 언마운트/닫힐 때 타이머 정리
   useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(clearTimeout);
+      timeoutsRef.current = [];
+    };
+  }, []);
+
+  // 키보드 이벤트 구독
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardOffset(e.endCoordinates.height);
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardOffset(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // 현재 보고 있는 챌린지
+  const challengeList = from === 'ongoing' ? ongoing : recommended;
+  const challenge = challengeList.find((c) => c.id === challengeId);
+
+  // ── 게이지/말풍선 계산용 값 ──
+  const targetValue = challenge?.targetValue ?? 0;
+  const currentValue = challenge?.currentValue ?? 0;
+
+  const pctFromField =
+    typeof challenge?.progressPct === 'number'
+      ? challenge.progressPct / 100
+      : 0;
+  const ratioFromValues = targetValue > 0 ? currentValue / targetValue : 0;
+
+  let progressRatio = pctFromField || ratioFromValues;
+  progressRatio = Math.max(0, Math.min(progressRatio, 1)); // 0~1
+
+  // 말풍선 계산
+  const totalStepsRaw = targetValue > 0 ? targetValue : 2;
+  const totalSteps = Math.max(1, Math.min(4, Math.round(totalStepsRaw)));
+
+  const completedSteps = Math.max(
+    0,
+    Math.min(totalSteps, Math.round(currentValue)),
+  );
+
+  // 트래킹 useEffect (completedSteps 포함)
+  useEffect(() => {
+    if (!challenge) {
+      track('challenge_detail_view_not_found', {
+        challengeId,
+        from,
+      });
+      return;
+    }
+
     track('challenge_detail_view', {
       challengeId,
       from,
@@ -96,14 +231,51 @@ function ChallengeDetail({
       category,
     });
 
-    // 진행 스텝 노출 로그 (예시 값)
     track('challenge_detail_step_impression', {
       challengeId,
-      totalSteps: 4,
-      completedSteps: 3,
-      currentStepOwner: '아빠',
+      totalSteps,
+      completedSteps,
     });
-  }, [challengeId, from, audience, category]);
+  }, [
+    challenge,
+    challengeId,
+    from,
+    audience,
+    category,
+    totalSteps,
+    completedSteps,
+  ]);
+
+  // challenge 못 찾은 경우 UI
+  if (!challenge) {
+    return (
+      <View style={styles.detailContainer}>
+        <TouchableOpacity style={styles.detailArrowButton} onPress={onClose}>
+          <Image
+            source={require('@/assets/images/Expand_right.png')}
+            style={styles.detailArrowIcon}
+          />
+        </TouchableOpacity>
+        <View style={styles.detailHeader}>
+          <Text style={styles.detailTitle}>
+            챌린지 정보를 불러오지 못했어요.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const domainLabel =
+    challenge.domainCategory && challenge.domainCategory !== '전체'
+      ? challenge.domainCategory
+      : '전체';
+
+  const durationLabel = mapDurationTypeToLabel(challenge.durationType);
+  const periodLabel = mapDurationTypeToPeriodLabel(challenge.durationType);
+  const endDateText = getEndDateText(challenge.durationType);
+  const pointLabel = `${challenge.rewardPoints ?? 0}p`;
+  const titleText = challenge.title ?? '챌린지 제목';
+  const levelLabel = (challenge as any).level ?? 'easy';
 
   const handleClose = () => {
     track('challenge_detail_close', {
@@ -111,6 +283,29 @@ function ChallengeDetail({
       closeReason: 'arrow_button',
     });
     onClose();
+  };
+
+  const handleDemoComplete = async () => {
+    try {
+      track('challenge_demo_complete_click', {
+        challengeId,
+        from,
+        audience,
+        category,
+      });
+
+      // 1) 먼저 바텀시트 닫기 (컴포넌트 언마운트)
+      onClose();
+
+      // 2) 그 다음에 스토어/파이어스토어 업데이트
+      await completeChallenge(challengeId);
+    } catch (e) {
+      console.log('[ChallengeDetail] demo complete error', e);
+      Alert.alert(
+        '완료 처리 오류',
+        '챌린지를 완료 처리하는 중 문제가 발생했어요. 다시 시도해주세요.',
+      );
+    }
   };
 
   const handleLikeToggle = (comment: CommentItem) => {
@@ -151,13 +346,49 @@ function ChallengeDetail({
       from: 'detail_bottom_input',
     });
 
-    // 실제로는 서버 전송 로직이 들어갈 자리
+    // 1) 내 댓글 추가
+    const myComment: CommentItem = {
+      id: `me-${Date.now()}`,
+      author: '나',
+      text: trimmed,
+      likeCount: 0,
+      likedDefault: false,
+    };
+
+    setComments((prev) => [...prev, myComment]);
     setCommentText('');
+
+    // 2) 가족 자동 댓글: 한 번만 실행
+    if (!hasTriggeredFamilyReply) {
+      setHasTriggeredFamilyReply(true);
+
+      // 아빠 댓글 (1.5초 뒤)
+      const t1 = setTimeout(() => {
+        const dad = COMMENT_DATA[0];
+        setComments((prev) => [...prev, dad]);
+        setLikedMap((prev) => ({
+          ...prev,
+          [dad.id]: dad.likedDefault,
+        }));
+      }, 1500);
+
+      // 동생 댓글 (3초 뒤)
+      const t2 = setTimeout(() => {
+        const bro = COMMENT_DATA[1];
+        setComments((prev) => [...prev, bro]);
+        setLikedMap((prev) => ({
+          ...prev,
+          [bro.id]: bro.likedDefault,
+        }));
+      }, 3000);
+
+      timeoutsRef.current.push(t1, t2);
+    }
   };
 
   return (
     <View style={styles.detailContainer}>
-      {/* 위로 접기 버튼 */}
+      {/* 위로 접기(닫기) 버튼 – 가운데 */}
       <TouchableOpacity style={styles.detailArrowButton} onPress={handleClose}>
         <Image
           source={require('@/assets/images/Expand_right.png')}
@@ -165,55 +396,87 @@ function ChallengeDetail({
         />
       </TouchableOpacity>
 
+      {/* 오른쪽 상단 완료 버튼 */}
+      <TouchableOpacity
+        style={styles.topCompleteButton}
+        onPress={handleDemoComplete}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.topCompleteButtonText}>완료</Text>
+      </TouchableOpacity>
+
       {/* 카테고리 / 제목 */}
       <View style={styles.detailHeader}>
-        <Text style={styles.detailCategoryLabel}>가사 | 릴레이</Text>
-        <Text style={styles.detailTitle}>
-          엄마&gt;동생&gt;아빠&gt;누나 손으로 로봇청소기 돌리기
+        <Text style={styles.detailCategoryLabel}>
+          {domainLabel} | {durationLabel}
         </Text>
+        <Text style={styles.detailTitle}>{titleText}</Text>
       </View>
 
-      {/* 진행 dots + 로봇 + 라인 */}
+      {/* 게이지 + 로봇 + 말풍선 */}
       <View style={styles.detailProgressWrapper}>
-        <View style={styles.detailProgressDotsRow}>
-          <View style={styles.detailDotDone} />
-          <View style={styles.detailDotDone} />
+        <View style={styles.detailProgressTrack}>
+          {/* 게이지 바 */}
+          <View style={styles.detailProgressLineBg}>
+            <View
+              style={[
+                styles.detailProgressLineFill,
+                { width: `${progressRatio * 100}%` },
+              ]}
+            />
+          </View>
+
+          {/* 로봇 이미지 (save/water/dishwasher) */}
           <Image
-            source={require('../../assets/images/Robot.png')}
-            style={styles.detailRobotIcon}
+            source={getRobotImageByChallengeId(challenge.id)}
+            style={[
+              styles.detailRobotIcon,
+              challenge.id === 'speed_dishwasher' &&
+                styles.specialDishwasherIcon,
+              {
+                position: 'absolute',
+                left: `${progressRatio * 100}%`,
+                transform: [{ translateX: -30 }],
+              },
+            ]}
           />
-          <View style={styles.detailDotYet} />
-        </View>
 
-        <View style={styles.detailProgressLineBg}>
-          <View style={styles.detailProgressLineFill} />
-        </View>
-      </View>
+          {/* 말풍선 레이어: 현재 위치 + 게이지 끝 2개만 표시 */}
+          <View style={styles.progressBubbleLayer}>
+            {/* 1) 현재 게이지 바로 아래 말풍선 (오늘 날짜) */}
+            <View
+              style={[
+                styles.progressBubble,
+                {
+                  left: `${progressRatio * 100}%`,
+                  transform: [{ translateX: '-50%' }],
+                },
+              ]}
+            >
+              <View style={styles.progressBubbleTail} />
+              <Text style={styles.progressBubbleText}>
+                {progressRatio > 0 ? getTodayCompleteText() : '-'}
+              </Text>
+            </View>
 
-      {/* 진행 상태 말풍선들 */}
-      <View style={styles.progressBubbleRow}>
-        {/* 엄마 */}
-        <View className="bubble">
-          <View style={styles.progressBubble}>
-            <View style={styles.progressBubbleTail} />
-            <Text style={styles.progressBubbleText}>엄마{'\n'}10/1 완료!</Text>
+            {/* 2) 끝 말풍선 — 마감일 */}
+            <View
+              style={[
+                styles.progressBubble,
+                {
+                  left: '100%',
+                  transform: [{ translateX: '-50%' }],
+                },
+              ]}
+            >
+              <View style={styles.progressBubbleTail} />
+              <Text style={styles.progressBubbleText}>{endDateText}</Text>
+            </View>
           </View>
         </View>
-
-        {/* 동생 */}
-        <View style={styles.progressBubble}>
-          <View style={styles.progressBubbleTail} />
-          <Text style={styles.progressBubbleText}>동생{'\n'}10/3 완료!</Text>
-        </View>
-
-        {/* 아빠 */}
-        <View style={styles.progressBubble}>
-          <View style={styles.progressBubbleTail} />
-          <Text style={styles.progressBubbleText}>아빠{'\n'}10/5 완료!</Text>
-        </View>
       </View>
 
-      {/* 기간 / 모드 / 포인트 */}
+      {/* 기간 / 난이도 / 포인트 */}
       <View style={styles.detailMetaPillRow}>
         <TouchableOpacity
           style={styles.detailMetaPill}
@@ -224,8 +487,9 @@ function ChallengeDetail({
             })
           }
         >
-          <Text style={styles.detailMetaPillText}>기간: 1주</Text>
+          <Text style={styles.detailMetaPillText}>기간: {periodLabel}</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.detailMetaPill}
           onPress={() =>
@@ -235,8 +499,9 @@ function ChallengeDetail({
             })
           }
         >
-          <Text style={styles.detailMetaPillText}>모드: easy</Text>
+          <Text style={styles.detailMetaPillText}>난이도: {levelLabel}</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.detailMetaPill}
           onPress={() =>
@@ -246,7 +511,7 @@ function ChallengeDetail({
             })
           }
         >
-          <Text style={styles.detailMetaPillText}>포인트: 50p</Text>
+          <Text style={styles.detailMetaPillText}>포인트: {pointLabel}</Text>
         </TouchableOpacity>
       </View>
 
@@ -255,11 +520,9 @@ function ChallengeDetail({
 
       {/* 댓글 영역 */}
       <View style={styles.commentSection}>
-        <Text style={styles.commentCountLabel}>
-          댓글 {COMMENT_DATA.length}개
-        </Text>
+        <Text style={styles.commentCountLabel}>댓글 {comments.length}개</Text>
 
-        {COMMENT_DATA.map((comment) => {
+        {comments.map((comment) => {
           const liked = likedMap[comment.id] ?? comment.likedDefault;
           const isDad = comment.author === '아빠';
 
@@ -280,7 +543,6 @@ function ChallengeDetail({
                   </Text>
                 </View>
 
-                {/* 좋아요 영역을 TouchableOpacity로 감싸서 토글 */}
                 <TouchableOpacity
                   style={styles.commentLikeBox}
                   onPress={() => handleLikeToggle(comment)}
@@ -308,7 +570,12 @@ function ChallengeDetail({
       </View>
 
       {/* 댓글 입력 바 */}
-      <View style={styles.commentInputBar}>
+      <View
+        style={[
+          styles.commentInputBar,
+          keyboardOffset ? { marginBottom: keyboardOffset } : null,
+        ]}
+      >
         <TextInput
           style={styles.commentInput}
           placeholder="응원의 댓글을 입력해주세요 :)"
@@ -329,7 +596,6 @@ function ChallengeDetail({
 }
 
 const styles = StyleSheet.create({
-  /* ===== 상세 하단시트 ===== */
   detailContainer: {
     width: '100%',
     maxWidth: 393,
@@ -354,8 +620,23 @@ const styles = StyleSheet.create({
     height: 43,
     resizeMode: 'contain',
   },
+  topCompleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F6F6F6',
+    borderRadius: 16,
+  },
+  topCompleteButtonText: {
+    color: '#E0E0E0',
+    fontSize: 12,
+    fontFamily: 'Roboto',
+    fontWeight: '500',
+  },
   detailHeader: {
-    marginBottom: -7,
+    marginBottom: -15,
     marginLeft: 20,
   },
   detailCategoryLabel: {
@@ -368,78 +649,67 @@ const styles = StyleSheet.create({
     width: 298,
     color: '#353535',
     fontFamily: 'Roboto',
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: '500',
   },
 
+  /* 게이지 + 말풍선 */
   detailProgressWrapper: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: 5,
+    marginBottom: 35,
   },
-  detailProgressDotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 54,
-    marginBottom: -33,
+  detailProgressTrack: {
+    width: 243,
+    height: 80,
+    justifyContent: 'center',
+    position: 'relative',
   },
-  detailDotDone: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  detailProgressLineBg: {
+    width: '100%',
+    height: 10,
+    borderRadius: 10,
+    backgroundColor: '#D9D9D9',
+    overflow: 'hidden',
+  },
+  detailProgressLineFill: {
+    height: 10,
+    borderRadius: 10,
     backgroundColor: '#5E75FD',
   },
-  detailDotYet: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#D9D9D9',
-  },
   detailRobotIcon: {
-    width: 60,
-    height: 59,
+    width: 75,
+    height: 69,
     resizeMode: 'contain',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
-    zIndex: 10,
+    marginBottom: 13,
+    marginLeft: -13,
   },
-  detailProgressLineBg: {
-    width: 243,
-    height: 6,
-    borderRadius: 10,
-    backgroundColor: '#D9D9D9',
-    overflow: 'hidden',
-    alignItems: 'flex-start',
+  specialDishwasherIcon: {
+    marginLeft: 8,
+    width: 50,
+    height: 50,
   },
-  detailProgressLineFill: {
-    width: 164,
-    height: 6,
-    borderRadius: 10,
-    backgroundColor: '#5E75FD',
+  progressBubbleLayer: {
+    position: 'absolute',
+    top: 75, // 게이지 아래로 살짝 내려오게
+    left: 0,
+    width: '100%',
+    height: 50,
   },
-
-  progressBubbleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start', // ✅ 왼쪽 정렬
-    columnGap: 10, // ✅ 버블 사이 간격 (기존보다 좁게 조정)
-    paddingHorizontal: 0, // ✅ 기존 패딩 제거 (좌우 간격 넓힐 때만 필요)
-    marginTop: 10,
-    marginBottom: 7,
-    marginLeft: 15, // ✅ 전체를 왼쪽으로 옮기고 싶을 때 조정 (값 작일수록 왼쪽으로)
-  },
-
   progressBubble: {
+    position: 'absolute',
     backgroundColor: '#353535',
     borderRadius: 30,
-    paddingHorizontal: 2,
+    paddingHorizontal: 10,
     paddingVertical: 7,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 70,
-    position: 'relative', // <- 삼각형 꼬리를 내부에 두기 위해 필요
   },
-
   progressBubbleText: {
     color: '#FFFFFF',
     fontFamily: 'Roboto',
@@ -448,12 +718,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-
   progressBubbleTail: {
     position: 'absolute',
     top: -6,
     left: '50%',
-    marginLeft: -6,
+    marginLeft: 3,
     width: 0,
     height: 0,
     borderLeftWidth: 6,
@@ -463,6 +732,7 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderBottomColor: '#353535',
   },
+
   detailMetaPillRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -471,19 +741,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   detailMetaPill: {
-    width: 91,
+    minWidth: 90,
     height: 19,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#353535',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 8,
   },
   detailMetaPillText: {
     fontSize: 12,
     color: '#353535',
     fontFamily: 'Roboto',
   },
+
   detailDivider: {
     height: 1,
     width: '120%',
@@ -493,7 +765,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  /* 댓글 리스트 */
   commentSection: {
     flex: 1,
     paddingHorizontal: 4,
@@ -511,8 +782,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   commentRowDad: {
-    marginLeft: 40, // 숫자 키워서 원하는 만큼 이동해 봐
-    // 또는 paddingLeft: 12,
+    marginLeft: 40,
   },
   commentAvatarWrapper: {
     width: 37,
@@ -570,14 +840,13 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
 
-  /* 댓글 입력 바 */
   commentInputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 25,
     paddingVertical: 12,
     marginHorizontal: -24,
-    marginBottom: 10,
+    marginBottom: 20,
   },
   commentInput: {
     flex: 1,
