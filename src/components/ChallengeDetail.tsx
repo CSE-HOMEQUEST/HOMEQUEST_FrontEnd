@@ -294,11 +294,29 @@ function ChallengeDetail({
         category,
       });
 
-      // 1) 먼저 바텀시트 닫기 (컴포넌트 언마운트)
-      onClose();
+      // ✅ completeChallenge 결과로 완료 여부 / 포인트 / 남은 값 받기
+      const result = await completeChallenge(challengeId);
 
-      // 2) 그 다음에 스토어/파이어스토어 업데이트
-      await completeChallenge(challengeId);
+      if (!result) return;
+
+      const { isCompleted, rewardPoints, remainingValue, unit } = result;
+
+      if (isCompleted && rewardPoints > 0) {
+        // ✅ 완주 + 포인트 획득 팝업
+        Alert.alert('챌린지 완료!', `${rewardPoints}p를 획득했어요!`);
+      } else {
+        // ✅ 아직 완주 전: 남은 양 안내
+        const unitLabel = unit || challenge.unit || ''; // challenge는 위에서 찾은 객체
+        const remainText =
+          remainingValue > 0
+            ? `완료까지 ${remainingValue}${unitLabel ? ` ${unitLabel}` : ''} 남았어요!`
+            : '조금만 더면 완료예요!';
+
+        Alert.alert('조금만 더!', remainText);
+      }
+
+      // 팝업 확인 후 바텀시트 닫기
+      onClose();
     } catch (e) {
       console.log('[ChallengeDetail] demo complete error', e);
       Alert.alert(

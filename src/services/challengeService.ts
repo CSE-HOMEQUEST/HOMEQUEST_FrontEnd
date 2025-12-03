@@ -417,6 +417,9 @@ export const challengeService = {
       isCompleted: boolean;
       mode: 'personal' | 'family';
       title: string;
+      currentValue: number;
+      targetValue: number;
+      unit?: string;
     };
 
     const result = await runTransaction(db, async (tx): Promise<TxResult> => {
@@ -569,6 +572,9 @@ export const challengeService = {
         isCompleted: isJustCompleted,
         mode,
         title,
+        currentValue: newCurrentValue, // 새 currentValue값 리턴
+        targetValue,
+        unit,
       };
     });
 
@@ -577,6 +583,9 @@ export const challengeService = {
       category: (result.mode === 'personal' ? '나' : '가족') as Filter,
       title: result.title,
       isCompleted: result.isCompleted,
+      currentValue: result.currentValue,
+      targetValue: result.targetValue,
+      unit: result.unit,
     };
   },
 
