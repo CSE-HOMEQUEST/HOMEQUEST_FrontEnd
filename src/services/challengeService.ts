@@ -253,6 +253,7 @@ export const challengeService = {
     const recommendedTimeSlot: string | undefined = d.recommendedTimeSlot;
     const deviceType: string = d.deviceType ?? 'none';
     const unit: string | undefined = d.unit;
+    const difficultyLevel: number | undefined = d.difficultyLevel;
 
     // single 타입이면 1회 완료 기준, 아니면 템플릿에 별도 targetValue가 있으면 사용
     const targetValue: number =
@@ -334,6 +335,9 @@ export const challengeService = {
     }
     if (unit != null && unit !== '') {
       payload.unit = unit;
+    }
+    if (difficultyLevel != null) {
+      payload.difficultyLevel = difficultyLevel;
     }
 
     // 4) 문서 저장
@@ -417,6 +421,9 @@ export const challengeService = {
       isCompleted: boolean;
       mode: 'personal' | 'family';
       title: string;
+      currentValue: number;
+      targetValue: number;
+      unit?: string;
     };
 
     const result = await runTransaction(db, async (tx): Promise<TxResult> => {
@@ -569,6 +576,9 @@ export const challengeService = {
         isCompleted: isJustCompleted,
         mode,
         title,
+        currentValue: newCurrentValue, // 새 currentValue값 리턴
+        targetValue,
+        unit,
       };
     });
 
@@ -577,6 +587,9 @@ export const challengeService = {
       category: (result.mode === 'personal' ? '나' : '가족') as Filter,
       title: result.title,
       isCompleted: result.isCompleted,
+      currentValue: result.currentValue,
+      targetValue: result.targetValue,
+      unit: result.unit,
     };
   },
 

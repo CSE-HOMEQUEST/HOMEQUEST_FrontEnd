@@ -28,10 +28,11 @@ export type Challenge = {
   targetValue?: number;
   unit?: string; // '회', '잔', '분' 같은 단위
 
+  level?: 1 | 2 | 3; // easy | medium | hard로 맵핑 필요 !
+  deviceType?: string; // wash_purifier 같은 연동 디바이스 타입
+
   // 완료 챌린지 정보 (홈 TodayReportPopup에서 사용)
   completedAt?: string; // 'YYYY-MM-DD'
-  // 난이도 (firebase에 level 넣어두면 읽어옴)
-  level?: 1 | 2 | 3; // easy | medium | hard로 맵핑 필요 !!
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -61,7 +62,12 @@ type Actions = {
   fetchRecommended: (opts?: { cursor?: string | null }) => Promise<void>;
   startChallenge: (id: string) => Promise<void>;
   updateProgress: (id: string, pct: number) => void;
-  completeChallenge: (id: string) => Promise<void>;
+  completeChallenge: (id: string) => Promise<{
+    isCompleted: boolean;
+    rewardPoints: number;
+    remainingValue: number;
+    unit?: string;
+  } | void>;
   dismissRecommendation: (id: string) => Promise<void>;
 
   // 홈 glow 리셋용
@@ -160,7 +166,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           d.challengeCategory as string | undefined,
         );
 
-        // duration / time / current/target/unit
+        // duration / time / current/target/unit / difficultyLevel / deviceType
         const durationType: string | undefined = d.durationType;
         const recommendedTimeSlot: string | undefined = d.recommendedTimeSlot;
         const currentValue: number =
@@ -168,6 +174,14 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         const targetValue: number | undefined =
           typeof d.targetValue === 'number' ? d.targetValue : undefined;
         const unit: string = (d.unit as string) ?? '';
+
+        const difficultyLevel: 1 | 2 | 3 | undefined =
+          typeof d.difficultyLevel === 'number'
+            ? (d.difficultyLevel as 1 | 2 | 3)
+            : undefined;
+
+        const deviceType: string | undefined =
+          typeof d.deviceType === 'string' ? d.deviceType : undefined;
 
         const progressPct: number =
           typeof d.progressPct === 'number'
@@ -198,6 +212,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           unit,
           progressPct,
           rewardPoints,
+          level: difficultyLevel,
+          deviceType,
         };
       });
 
@@ -205,6 +221,13 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         const audienceCategory: Filter =
           dto.mode === 'personal' ? '나' : '가족';
         const domainCategory: Filter = mapFsCategoryToFilter(dto.category);
+        const difficultyLevel: 1 | 2 | 3 | undefined =
+          typeof dto.difficultyLevel === 'number'
+            ? (dto.difficultyLevel as 1 | 2 | 3)
+            : undefined;
+
+        const deviceType: string | undefined =
+          typeof dto.deviceType === 'string' ? dto.deviceType : undefined;
 
         return {
           id: dto.id,
@@ -218,6 +241,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
               : dto.baseFamilyPoints,
           durationType: dto.durationType,
           recommendedTimeSlot: dto.recommendedTimeSlot,
+          level: difficultyLevel,
+          deviceType,
         };
       });
 
@@ -330,23 +355,85 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
   ----------------------------- */
   completeChallenge: async (id) => {
     const res = await challengeService.completeChallenge(id);
-    const { rewardPoints, category, title, isCompleted } = res;
+    const {
+      rewardPoints,
+      category,
+      title,
+      isCompleted,
+      currentValue,
+      targetValue,
+      unit,
+    } = res as any;
 
     const state = get();
     const rewardStore = useRewardStore.getState();
+    const { hydrate } = get();
 
     const todayDot = new Date().toISOString().slice(0, 10).replace(/-/g, '.'); // 히스토리용
     const todayStr = new Date().toISOString().slice(0, 10); // completedAt 용 (YYYY-MM-DD)
 
+    // 1) 항상 ongoing 리스트의 진행도/값 먼저 업데이트 (완료 여부와 상관없이)
+    set((s) => {
+      const updatedOngoing = s.ongoing.map((c) => {
+        if (c.id !== id) return c;
+
+        const newCurrent =
+          typeof currentValue === 'number'
+            ? currentValue
+            : (c.currentValue ?? 0);
+        const newTarget =
+          typeof targetValue === 'number' && targetValue > 0
+            ? targetValue
+            : c.targetValue;
+
+        const pct =
+          newTarget && newTarget > 0
+            ? Math.min(Math.floor((newCurrent / newTarget) * 100), 100)
+            : (c.progressPct ?? 0);
+
+        return {
+          ...c,
+          currentValue: newCurrent,
+          targetValue: newTarget,
+          unit: unit ?? c.unit,
+          progressPct: pct,
+        };
+      });
+
+      return { ...s, ongoing: updatedOngoing };
+    });
+
+    const safeTarget = typeof targetValue === 'number' ? targetValue : 0;
+    const safeCurrent = typeof currentValue === 'number' ? currentValue : 0;
+    const remainingValue =
+      safeTarget > 0 ? Math.max(safeTarget - safeCurrent, 0) : 0;
+
+    // 2) 아직 완주 전이면: 포인트/상태 이동 없이 팝업용 정보만 리턴
     if (!isCompleted || rewardPoints <= 0) {
       console.log(
-        '[useChallengeStore.completeChallenge] not completed yet, no reward',
-        { id, rewardPoints, category, title, isCompleted },
+        '[useChallengeStore.completeChallenge] not fully completed yet',
+        {
+          id,
+          rewardPoints,
+          category,
+          title,
+          isCompleted,
+          currentValue,
+          targetValue,
+        },
       );
-      return;
+
+      await hydrate();
+
+      return {
+        isCompleted,
+        rewardPoints,
+        remainingValue,
+        unit,
+      };
     }
 
-    // 포인트 업데이트는 너 코드 그대로 유지
+    // 3) 완주한 경우: 리워드 반영
     if (category === '나') {
       rewardStore.setMyReward({
         currentPoint: rewardStore.myPoint + rewardPoints,
@@ -376,7 +463,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
       });
     }
 
-    // ✅ completed 배열에 completedAt을 넣어줌
+    // 4) ongoing → completed 이동 + 다시 recommended에 재투입
     set((s) => {
       const target = s.ongoing.find((c) => c.id === id);
       const remaining = s.ongoing.filter((c) => c.id !== id);
@@ -401,17 +488,16 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
             ? 'dong'
             : s.effects.lastCompleted;
 
-      // 🔵 1) 기존 recommended에서 같은 id는 일단 제거 (중복 방지)
+      // 1) 기존 recommended에서 같은 id 제거
       const filteredRecommended = s.recommended.filter((c) => c.id !== id);
 
-      // 🔵 2) 다시 추천용 아이템으로 넣기
+      // 2) 다시 추천 리스트에 넣어주기 (리셋된 상태로)
       const reRecommendedItem: Challenge | undefined = target
         ? {
             ...target,
             status: 'recommended',
             progressPct: 0,
             currentValue: 0,
-            // targetValue는 한 판 기준 유지
             targetValue: target.targetValue,
             completedAt: undefined,
           }
@@ -431,6 +517,16 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         },
       };
     });
+
+    await hydrate();
+
+    // 5) UI(Detail)에서 팝업에 쓸 정보 리턴
+    return {
+      isCompleted,
+      rewardPoints,
+      remainingValue: 0,
+      unit,
+    };
   },
 
   /* -----------------------------
