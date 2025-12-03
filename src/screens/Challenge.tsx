@@ -76,6 +76,32 @@ const formatProgressBadge = (c: ChallengeItem): string => {
   return unit ? `${cur}/${target}${unit}` : `${cur}/${target}`;
 };
 
+// 추천/진행 카드용 챌린지 이미지 매퍼
+const getChallengeImageSource = (c: ChallengeItem) => {
+  const domain = c.domainCategory; // '절약' | '가사' | '헬스' | ...
+  const deviceType = c.deviceType; // store에 위에서 추가한 필드
+
+  if (domain === '헬스') {
+    return require('../../assets/images/water.png');
+  }
+
+  if (domain === '절약') {
+    return require('../../assets/images/save.png');
+  }
+
+  if (domain === '가사') {
+    if (deviceType === 'robot_cleaner') {
+      return require('../../assets/images/Robot.png');
+    }
+    if (deviceType === 'dishwasher') {
+      return require('../../assets/images/dishwasher.png');
+    }
+    return require('../../assets/images/dishwasher.png');
+  }
+
+  return require('../../assets/images/dishwasher.png');
+};
+
 function Header() {
   return (
     <View style={styles.header}>
@@ -459,7 +485,7 @@ function RecommendedChallengeSection({
 
               <View style={styles.recommendedContentRow}>
                 <Image
-                  source={require('../../assets/images/dishwasher.png')}
+                  source={getChallengeImageSource(item)}
                   style={styles.dishwasherIcon}
                 />
 

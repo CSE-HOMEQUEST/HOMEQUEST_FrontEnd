@@ -1,15 +1,15 @@
 // src/components/ChallengeDetails.tsx
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
+  Keyboard,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  Keyboard,
-  Platform,
 } from 'react-native';
 
 import { useChallengeStore, type Filter } from '@/src/store/useChallengeStore';
@@ -128,17 +128,37 @@ const getAvatarByAuthor = (author: string) => {
   }
 };
 
-// 챌린지 id → 로봇 이미지
-const getRobotImageByChallengeId = (id: string) => {
-  switch (id) {
-    case 'daily_water_2':
-      return require('../../assets/images/water.png');
-    case 'monthly_heating':
-      return require('../../assets/images/save.png');
-    case 'speed_dishwasher':
-    default:
-      return require('../../assets/images/dishwasher.png');
+// 챌린지 카테고리/deviceType -> 이미지 맵핑
+const getImageByMeta = (opts: {
+  domainCategory?: string; // '절약' | '가사' | '헬스' | ...
+  deviceType?: string; // 'robot_cleaner' | 'dishwasher' | ...
+}) => {
+  const { domainCategory, deviceType } = opts;
+
+  // 1) 헬스 계열 → 물 마시기
+  if (domainCategory === '헬스') {
+    return require('../../assets/images/water.png');
   }
+
+  // 2) 절약 계열 → save 아이콘
+  if (domainCategory === '절약') {
+    return require('../../assets/images/save.png');
+  }
+
+  // 3) 가사 계열 → deviceType으로 분기
+  if (domainCategory === '가사') {
+    if (deviceType === 'robot_cleaner') {
+      return require('../../assets/images/Robot.png');
+    }
+    if (deviceType === 'dishwasher') {
+      return require('../../assets/images/dishwasher.png');
+    }
+    // 기타 가사 → 기본은 식세기
+    return require('../../assets/images/dishwasher.png');
+  }
+
+  // 4) 그 외/전체 → 기본값
+  return require('../../assets/images/dishwasher.png');
 };
 
 function ChallengeDetail({
@@ -275,7 +295,14 @@ function ChallengeDetail({
   const endDateText = getEndDateText(challenge.durationType);
   const pointLabel = `${challenge.rewardPoints ?? 0}p`;
   const titleText = challenge.title ?? '챌린지 제목';
-  const levelLabel = (challenge as any).level ?? 'easy';
+  const levelLabel =
+    challenge.level === 1
+      ? '쉬움'
+      : challenge.level === 2
+        ? '보통'
+        : challenge.level === 3
+          ? '어려움'
+          : '보통';
 
   const handleClose = () => {
     track('challenge_detail_close', {
@@ -444,12 +471,15 @@ function ChallengeDetail({
             />
           </View>
 
-          {/* 로봇 이미지 (save/water/dishwasher) */}
           <Image
-            source={getRobotImageByChallengeId(challenge.id)}
+            source={getImageByMeta({
+              domainCategory: challenge.domainCategory,
+              deviceType: (challenge as any).deviceType,
+            })}
             style={[
               styles.detailRobotIcon,
-              challenge.id === 'speed_dishwasher' &&
+              // 식세기일 때만 특수 스타일 주고 싶으면 유지
+              (challenge as any).deviceType === 'dishwasher' &&
                 styles.specialDishwasherIcon,
               {
                 position: 'absolute',

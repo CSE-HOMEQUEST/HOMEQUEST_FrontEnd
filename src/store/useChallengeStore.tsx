@@ -28,10 +28,11 @@ export type Challenge = {
   targetValue?: number;
   unit?: string; // '회', '잔', '분' 같은 단위
 
+  level?: 1 | 2 | 3; // easy | medium | hard로 맵핑 필요 !
+  deviceType?: string; // wash_purifier 같은 연동 디바이스 타입
+
   // 완료 챌린지 정보 (홈 TodayReportPopup에서 사용)
   completedAt?: string; // 'YYYY-MM-DD'
-  // 난이도 (firebase에 level 넣어두면 읽어옴)
-  level?: 1 | 2 | 3; // easy | medium | hard로 맵핑 필요 !!
 };
 
 export type Page<T> = { items: T[]; cursor?: string | null };
@@ -165,7 +166,7 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           d.challengeCategory as string | undefined,
         );
 
-        // duration / time / current/target/unit
+        // duration / time / current/target/unit / difficultyLevel / deviceType
         const durationType: string | undefined = d.durationType;
         const recommendedTimeSlot: string | undefined = d.recommendedTimeSlot;
         const currentValue: number =
@@ -173,6 +174,14 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         const targetValue: number | undefined =
           typeof d.targetValue === 'number' ? d.targetValue : undefined;
         const unit: string = (d.unit as string) ?? '';
+
+        const difficultyLevel: 1 | 2 | 3 | undefined =
+          typeof d.difficultyLevel === 'number'
+            ? (d.difficultyLevel as 1 | 2 | 3)
+            : undefined;
+
+        const deviceType: string | undefined =
+          typeof d.deviceType === 'string' ? d.deviceType : undefined;
 
         const progressPct: number =
           typeof d.progressPct === 'number'
@@ -203,6 +212,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
           unit,
           progressPct,
           rewardPoints,
+          level: difficultyLevel,
+          deviceType,
         };
       });
 
@@ -210,6 +221,13 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
         const audienceCategory: Filter =
           dto.mode === 'personal' ? '나' : '가족';
         const domainCategory: Filter = mapFsCategoryToFilter(dto.category);
+        const difficultyLevel: 1 | 2 | 3 | undefined =
+          typeof dto.difficultyLevel === 'number'
+            ? (dto.difficultyLevel as 1 | 2 | 3)
+            : undefined;
+
+        const deviceType: string | undefined =
+          typeof dto.deviceType === 'string' ? dto.deviceType : undefined;
 
         return {
           id: dto.id,
@@ -223,6 +241,8 @@ export const useChallengeStore = create<State & Actions>((set, get) => ({
               : dto.baseFamilyPoints,
           durationType: dto.durationType,
           recommendedTimeSlot: dto.recommendedTimeSlot,
+          level: difficultyLevel,
+          deviceType,
         };
       });
 
