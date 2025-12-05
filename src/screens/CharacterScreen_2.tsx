@@ -43,6 +43,7 @@ const titleImageMap: Record<string, any> = {
   '난방 절약': require('../../assets/images/save.png'),
   '물 한 잔': require('../../assets/images/water.png'),
   로봇: require('../../assets/images/Robot.png'),
+  식기: require('../../assets/images/dishwasher.png'),
 };
 
 function getChallengeImageByTitle(title: string) {
@@ -53,6 +54,8 @@ function getChallengeImageByTitle(title: string) {
   if (title.includes('난방')) return require('../../assets/images/save.png');
   if (title.includes('물')) return require('../../assets/images/water.png');
   if (title.includes('로봇')) return require('../../assets/images/Robot.png');
+  if (title.includes('식기'))
+    return require('../../assets/images/dishwasher.png');
   // 기본 이미지
   return require('../../assets/images/save.png');
 }
