@@ -80,6 +80,8 @@ const mapDurationTypeToLabel = (durationType?: string): string => {
       return '데일리';
     case 'weekly':
       return '위클리';
+    case 'speed':
+      return '스피드';
     case 'monthly':
       return '먼슬리';
     default:
@@ -194,7 +196,7 @@ function mapAiResponseToChallenges(data: TodayReportResponse): ChallengeItem[] {
       title: getChallengeNameFromId(data.speed.challengeId),
       category: '나', // 개인 챌린지이므로 '나'
       domainCategory: '가사',
-      durationType: 'daily',
+      durationType: 'speed',
       rewardPoints: data.speed.personalPoints ?? 0, // 개인 포인트 사용
       progressPct: 0,
       currentValue: 0,
@@ -1314,7 +1316,7 @@ const styles = StyleSheet.create({
   },
 
   challengeCard: {
-    width: 165,
+    width: 170,
     height: 108,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
