@@ -351,8 +351,8 @@ const styles = StyleSheet.create({
   },
   challengeInner: { flexDirection: 'row', alignItems: 'center' },
   challengeIcon: {
-    width: 78,
-    height: 78,
+    width: 64,
+    height: 64,
     marginRight: 12,
     left: -2,
     marginTop: -6,
