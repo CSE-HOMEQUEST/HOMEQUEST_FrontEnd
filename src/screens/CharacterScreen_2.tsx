@@ -140,6 +140,7 @@ function CharacterContent() {
                 <Image
                   source={getChallengeImageByTitle(ch.title)}
                   style={styles.challengeIcon}
+                  resizeMode="contain"
                 />
 
                 <View style={styles.challengeTextBox}>
