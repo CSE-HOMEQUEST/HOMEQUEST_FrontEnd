@@ -43,7 +43,7 @@ const titleImageMap: Record<string, any> = {
   '난방 절약': require('../../assets/images/save.png'),
   '물 한 잔': require('../../assets/images/water.png'),
   로봇: require('../../assets/images/Robot.png'),
-  식기: require('../../assets/images/dishwasher.png'),
+  식기: require('../../assets/images/dishwasher1.png'),
 };
 
 function getChallengeImageByTitle(title: string) {
@@ -55,7 +55,7 @@ function getChallengeImageByTitle(title: string) {
   if (title.includes('물')) return require('../../assets/images/water.png');
   if (title.includes('로봇')) return require('../../assets/images/Robot.png');
   if (title.includes('식기'))
-    return require('../../assets/images/dishwasher.png');
+    return require('../../assets/images/dishwasher1.png');
   // 기본 이미지
   return require('../../assets/images/save.png');
 }
@@ -140,7 +140,6 @@ function CharacterContent() {
                 <Image
                   source={getChallengeImageByTitle(ch.title)}
                   style={styles.challengeIcon}
-                  resizeMode="contain"
                 />
 
                 <View style={styles.challengeTextBox}>
@@ -351,8 +350,8 @@ const styles = StyleSheet.create({
   },
   challengeInner: { flexDirection: 'row', alignItems: 'center' },
   challengeIcon: {
-    width: 64,
-    height: 64,
+    width: 78,
+    height: 78,
     marginRight: 12,
     left: -2,
     marginTop: -6,
