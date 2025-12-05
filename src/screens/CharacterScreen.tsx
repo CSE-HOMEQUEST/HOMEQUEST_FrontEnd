@@ -1,7 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -40,10 +39,31 @@ function Header() {
   );
 }
 
+const titleImageMap: Record<string, any> = {
+  '난방 절약': require('../../assets/images/save.png'),
+  '물 한 잔': require('../../assets/images/water.png'),
+  로봇: require('../../assets/images/Robot.png'),
+};
+
+function getChallengeImageByTitle(title: string) {
+  // 정확한 매칭
+  if (titleImageMap[title]) {
+    return titleImageMap[title];
+  }
+  if (title.includes('난방')) return require('../../assets/images/save.png');
+  if (title.includes('물')) return require('../../assets/images/water.png');
+  if (title.includes('로봇')) return require('../../assets/images/Robot.png');
+  // 기본 이미지
+  return require('../../assets/images/save.png');
+}
+
+import { useChallengeStore } from '@/src/store/useChallengeStore';
+
 /* ────────────── Character Content ────────────── */
 function CharacterContent() {
+  const { ongoing } = useChallengeStore();
+  const personalOngoing = ongoing.filter((ch) => ch.category === '가족');
   const [activeIndex, setActiveIndex] = useState(0);
-
   // 카드 스크롤 시 인덱스 업데이트
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollX = event.nativeEvent.contentOffset.x;
@@ -80,49 +100,74 @@ function CharacterContent() {
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        snapToInterval={351} // 카드 폭(331) + 간격(20)
+        snapToInterval={351}
         decelerationRate="fast"
         snapToAlignment="center"
         contentContainerStyle={{
           paddingHorizontal: (width - 351) / 2,
         }}
       >
-        {/* 챌린지 카드 (1~3) */}
-        {[1, 2, 3].map((_, i) => (
-          <View key={i} style={styles.challengeBox}>
+        {personalOngoing.length === 0 ? (
+          // ⭐ 빈 상태일 때 표시되는 기본 카드
+          <View style={styles.challengeBox}>
             <Text style={styles.challengeLabel}>진행 중인 챌린지</Text>
-            <View style={styles.challengeInner}>
-              <Image
-                source={require('../../assets/bars/air.png')}
-                style={styles.challengeIcon}
-              />
-              <View style={styles.challengeTextBox}>
-                <Text style={styles.challengeTitle}>
-                  어제보다 에어컨 사용량 줄이기
-                </Text>
-                <View style={styles.progressBarWrapper}>
-                  <LinearGradient
-                    colors={['#5A6FE9', '#9AA7F3']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.progressBar}
-                  />
-                </View>
-              </View>
-              <ImageBackground
-                source={require('../../assets/main_icon/bubble.png')}
-                style={styles.pointTagImage}
+
+            <View style={[styles.challengeInner, { justifyContent: 'center' }]}>
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: '#A0A0A0',
+                  textAlign: 'center',
+                  width: '100%',
+                  marginTop: 23,
+                }}
               >
-                <Text style={styles.pointText}>40p 획득!</Text>
-              </ImageBackground>
+                진행 중인 챌린지가 없어요
+              </Text>
             </View>
           </View>
-        ))}
+        ) : (
+          personalOngoing.map((ch) => (
+            <View key={ch.id} style={styles.challengeBox}>
+              <Text style={styles.challengeLabel}>진행 중인 챌린지</Text>
+
+              <View style={styles.challengeInner}>
+                <Image
+                  source={getChallengeImageByTitle(ch.title)}
+                  style={styles.challengeIcon}
+                />
+
+                <View style={styles.challengeTextBox}>
+                  <Text style={styles.challengeTitle}>{ch.title}</Text>
+
+                  <View style={styles.progressBarWrapper}>
+                    <LinearGradient
+                      colors={['#5A6FE9', '#9AA7F3']}
+                      style={[
+                        styles.progressBar,
+                        { width: `${ch.progressPct ?? 0}%` },
+                      ]}
+                    />
+                  </View>
+                </View>
+
+                <ImageBackground
+                  source={require('../../assets/main_icon/bubble.png')}
+                  style={styles.pointTagImage}
+                >
+                  <Text style={styles.pointText}>
+                    {ch.rewardPoints ?? 0}p 획득!
+                  </Text>
+                </ImageBackground>
+              </View>
+            </View>
+          ))
+        )}
       </ScrollView>
 
       {/* 페이지 인디케이터 */}
       <View style={styles.pageIndicatorDots}>
-        {[0, 1, 2].map((i) => (
+        {(personalOngoing.length === 0 ? [0] : ongoing).map((_, i) => (
           <View
             key={i}
             style={i === activeIndex ? styles.dotActive : styles.dotInactive}
@@ -156,34 +201,25 @@ function CharacterContent() {
 function BottomTabBar() {
   return (
     <View style={styles.bottomTabBar}>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => router.push('/(tabs)')}
-      >
+      <TouchableOpacity activeOpacity={0.7}>
         <Image
           source={require('../../assets/bars/home.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/two')}>
+      <TouchableOpacity activeOpacity={0.7}>
         <Image
           source={require('../../assets/bars/challenge.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => router.push('/three')}
-      >
+      <TouchableOpacity activeOpacity={0.7}>
         <Image
           source={require('../../assets/bars/reward.png')}
           style={styles.tabIcon}
         />
       </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => router.push('/four')}
-      >
+      <TouchableOpacity activeOpacity={0.7}>
         <Image
           source={require('../../assets/bars/ranking.png')}
           style={styles.tabIcon}
@@ -215,7 +251,7 @@ const styles = StyleSheet.create({
   // Header
   header: {
     width: '100%',
-    height: 53,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -260,8 +296,8 @@ const styles = StyleSheet.create({
   // 캐릭터
   characterContainer: { alignItems: 'center', marginTop: 10, zIndex: 1 },
   characterImage: {
-    width: 165,
-    height: 200,
+    width: 155,
+    height: 190,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -272,7 +308,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: 'Roboto-Bold',
     color: '#000',
-    marginTop: -15,
+    marginTop: -5,
   },
   line: {
     position: 'absolute',

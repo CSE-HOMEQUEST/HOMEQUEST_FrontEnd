@@ -124,7 +124,7 @@ function getChallengeNameFromId(challengeId: string) {
     case 'monthly_heating':
       return '한 달간 난방 절약';
     case 'speed_dishwasher':
-      return '저녁 식기세척기 릴레이';
+      return '식기세척기 스피드 챌린지';
     default:
       return challengeId;
   }
@@ -1314,7 +1314,7 @@ const styles = StyleSheet.create({
   },
 
   challengeCard: {
-    width: 160,
+    width: 165,
     height: 108,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',

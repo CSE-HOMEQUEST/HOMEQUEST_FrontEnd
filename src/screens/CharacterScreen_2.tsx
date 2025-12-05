@@ -39,14 +39,33 @@ function Header() {
   );
 }
 
+const titleImageMap: Record<string, any> = {
+  '난방 절약': require('../../assets/images/save.png'),
+  '물 한 잔': require('../../assets/images/water.png'),
+  로봇: require('../../assets/images/Robot.png'),
+};
+
+function getChallengeImageByTitle(title: string) {
+  // 정확한 매칭
+  if (titleImageMap[title]) {
+    return titleImageMap[title];
+  }
+  if (title.includes('난방')) return require('../../assets/images/save.png');
+  if (title.includes('물')) return require('../../assets/images/water.png');
+  if (title.includes('로봇')) return require('../../assets/images/Robot.png');
+  // 기본 이미지
+  return require('../../assets/images/save.png');
+}
+
 import { useChallengeStore } from '@/src/store/useChallengeStore';
 
 /* ────────────── Character Content ────────────── */
 function CharacterContent() {
   const { ongoing } = useChallengeStore();
-  const personalOngoing = ongoing.filter((ch) => ch.category === '나');
+  const personalOngoing = ongoing.filter(
+    (ch) => ch.category === '나' || ch.category === '가족',
+  );
   const [activeIndex, setActiveIndex] = useState(0);
-
   // 카드 스크롤 시 인덱스 업데이트
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollX = event.nativeEvent.contentOffset.x;
@@ -116,7 +135,7 @@ function CharacterContent() {
 
               <View style={styles.challengeInner}>
                 <Image
-                  source={require('../../assets/bars/air.png')}
+                  source={getChallengeImageByTitle(ch.title)}
                   style={styles.challengeIcon}
                 />
 
