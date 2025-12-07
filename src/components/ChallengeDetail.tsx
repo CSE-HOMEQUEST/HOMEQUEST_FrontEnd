@@ -277,9 +277,7 @@ function ChallengeDetail({
           />
         </TouchableOpacity>
         <View style={styles.detailHeader}>
-          <Text style={styles.detailTitle}>
-            챌린지 정보를 불러오지 못했어요.
-          </Text>
+          <Text style={styles.detailTitle}>챌린지 정보를 불러오는 중...</Text>
         </View>
       </View>
     );
