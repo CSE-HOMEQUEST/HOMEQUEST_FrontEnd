@@ -65,7 +65,7 @@ function formatAiAnalysis(data: TodayReportResponse): string {
   if (typeof data.energyHigh === 'boolean') {
     if (data.energyHigh) {
       lines.push(
-        '오늘은 에너지 사용량이 평소보다 조금 높게 나타났어요.',
+        '오늘은 에너지 사용량이 평소보다 조금 높게 나왔어요.',
         '특히 난방 기기 사용량이 증가한 것으로 보여요.',
         '에너지 절약 챌린지를 함께 시도해보는 건 어떨까요?',
       );
@@ -333,45 +333,32 @@ function TodayReportPopup({
   onRetry: () => void;
 }) {
   const completed = useChallengeStore((s) => s.completed);
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const todayStr = new Date().toISOString().slice(0, 10);
 
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  // ① 오늘의 개인 챌린지 (daily)
+  const todayPersonal = completed.find(
+    (c) =>
+      c.category === '나' &&
+      c.durationType === 'daily' &&
+      c.completedAt === todayStr,
+  );
 
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  startOfWeek.setHours(0, 0, 0, 0);
+  // ② 오늘의 스피드 챌린지 (speed)
+  const todaySpeed = completed.find(
+    (c) =>
+      c.category === '나' &&
+      c.durationType === 'speed' &&
+      c.completedAt === todayStr,
+  );
 
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
-  endOfWeek.setHours(23, 59, 59, 999);
-
-  const toDate = (d?: string) => (d ? new Date(d) : null);
-
-  // 이번 달 가족 챌린지 중 가장 최근 1개
-  const monthlyFamily = [...completed]
-    .filter((c) => {
-      if (c.category !== '가족' || !c.completedAt) return false;
-      const d = toDate(c.completedAt);
-      if (!d) return false;
-      return d.getFullYear() === year && d.getMonth() === month;
-    })
-    .slice(-1)[0];
-
-  // 이번 주 가족 챌린지 중 가장 최근 1개
-  const weeklyFamily = [...completed]
-    .filter((c) => {
-      if (c.category !== '가족' || !c.completedAt) return false;
-      const d = toDate(c.completedAt);
-      if (!d) return false;
-      return d >= startOfWeek && d <= endOfWeek;
-    })
-    .slice(-1)[0];
-
-  // 오늘 개인 챌린지 중 가장 최근 1개
-  const todayPersonal = [...completed]
-    .filter((c) => c.category === '나' && c.completedAt === todayStr)
+  // ③ 이번 달 가족 챌린지 (최근 1개)
+  const monthlyFamily = completed
+    .filter(
+      (c) =>
+        c.category === '가족' &&
+        c.completedAt &&
+        new Date(c.completedAt).getMonth() === new Date().getMonth(),
+    )
     .slice(-1)[0];
 
   const renderAiText = () => {
@@ -425,26 +412,23 @@ function TodayReportPopup({
                 style={styles.challengeIcon}
               />
               <Text style={styles.challengeText}>
-                이번 달의 가족 챌린지 : 아직 완료된 챌린지가 없습니다.
+                이번 달의 가족 챌린지 : 난방 절약 챌린지 진행 중..
               </Text>
               <Text style={styles.point}>+0p</Text>
             </View>
           )}
 
           {/* 이번 주 가족 챌린지 (스피드/주간 느낌으로 표기) */}
-          {weeklyFamily ? (
+          {todaySpeed ? (
             <View style={styles.challengeBox}>
               <Image
                 source={require('../../assets/main_icon/Subtract.png')}
                 style={styles.challengeIcon}
               />
               <Text style={styles.challengeText}>
-                오늘의 스피드 챌린지 : {'\n'}
-                {weeklyFamily.title} 성공!
+                오늘의 스피드 챌린지 : {todaySpeed.title} 성공!
               </Text>
-              <Text style={styles.point}>
-                +{weeklyFamily.rewardPoints ?? 0}p
-              </Text>
+              <Text style={styles.point}>+{todaySpeed.rewardPoints ?? 0}p</Text>
             </View>
           ) : (
             <View style={styles.challengeBox}>
@@ -765,7 +749,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#000',
     lineHeight: 15,
-    left: 7,
+    left: 5,
     marginTop: 3,
     marginBottom: 3,
   },

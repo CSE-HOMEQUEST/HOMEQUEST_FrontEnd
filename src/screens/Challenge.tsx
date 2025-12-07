@@ -39,6 +39,8 @@ const mapDurationTypeToLabel = (durationType?: string): string => {
       return '데일리';
     case 'weekly':
       return '위클리';
+    case 'speed':
+      return '스피드';
     case 'monthly':
       return '먼슬리';
     default:
@@ -284,7 +286,7 @@ function ChallengeCardv2({
   );
 
   return (
-    <View style={styles.challengeCard2}>
+    <View style={styles.challengeCard}>
       <View style={styles.challengeCardHeader}>
         {/* 카테고리(절약/가사/헬스) | duration */}
         <Text style={styles.challengeMetaText}>{category}</Text>
@@ -338,7 +340,8 @@ function ChallengeCardv2({
           )}
         </View>
 
-        {hasProgress && barWidth > 0 && (
+        {/* 게이지가 0이어도, barWidth만 잡히면 말풍선은 항상 보이게 */}
+        {barWidth > 0 && (
           <View style={[styles.progressBubble, { left: bubbleLeft }]}>
             <View style={styles.badge2}>
               <Text style={styles.badgeText2}>{badgeText}</Text>
@@ -398,6 +401,18 @@ function ChallengeProgressSection({
       </ScrollView>
     </View>
   );
+}
+
+function getChallengeImageStyle(id: string) {
+  switch (id) {
+    case 'daily_water_2':
+      return styles.waterIcon;
+    case 'monthly_heating':
+      return styles.heatingIcon;
+    case 'speed_dishwasher':
+    default:
+      return styles.dishwasherIcon;
+  }
 }
 
 function RecommendedChallengeSection({
@@ -486,7 +501,7 @@ function RecommendedChallengeSection({
               <View style={styles.recommendedContentRow}>
                 <Image
                   source={getChallengeImageSource(item)}
-                  style={styles.dishwasherIcon}
+                  style={getChallengeImageStyle(item.id)}
                 />
 
                 <View style={styles.recommendedTextCol}>
@@ -957,8 +972,8 @@ const styles = StyleSheet.create({
     paddingLeft: 20,
   },
 
-  challengeCard2: {
-    width: 135,
+  challengeCard: {
+    width: 170,
     height: 108,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
@@ -1017,6 +1032,8 @@ const styles = StyleSheet.create({
   },
 
   progressBarBg: {
+    width: '86%',
+    alignSelf: 'center',
     height: 9,
     borderRadius: 10,
     backgroundColor: '#F6F6F6',
@@ -1034,6 +1051,7 @@ const styles = StyleSheet.create({
     bottom: 9 + 4, // 바 위로 살짝 띄우기
     width: 80,
     alignItems: 'center',
+    marginLeft: -15,
   },
 
   badge2: {
@@ -1131,6 +1149,20 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     marginRight: 30,
     marginLeft: 16,
+  },
+  waterIcon: {
+    width: 64,
+    height: 64,
+    resizeMode: 'contain',
+    marginRight: 10,
+    marginTop: -9,
+  },
+  heatingIcon: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+    marginRight: 10,
+    marginTop: -7,
   },
   recommendedTextCol: {
     flex: 1,
