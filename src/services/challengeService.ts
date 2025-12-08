@@ -76,20 +76,11 @@ export type ContributionDoc = {
 
   // contribution 필드들
   actionType?: string;
-  category?: string;
-  completed?: boolean;
   completionTime?: string;
-  createdAt: Timestamp;
-  deviceTypeRaw?: string; // 원래 contribution.deviceType를 살리고 싶다면
-  durationTypeRaw?: string;
   energyKwh?: number;
   eventDate: Timestamp;
-  eventId?: string;
-  familyId?: string;
-  familyPoints?: number;
   personalPoints?: number;
   timeSlot?: string;
-  value?: number;
   weekday?: number;
 };
 
@@ -172,8 +163,8 @@ function getDayRange(baseDate: Date): { start: Timestamp; end: Timestamp } {
   };
 }
 
-// Timestamp → 'YYYY-MM-DD' 문자열 키
-const toDateKey = (ts: Timestamp): string => {
+// Timestamp → 'YYYY-MM-DD' (날짜만)
+const tsToDateString = (ts: Timestamp): string => {
   const d = ts.toDate();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -193,8 +184,8 @@ function computeCategoryStreaksFromWeekly(
   const dateToCategories = new Map<string, Set<string>>();
 
   contributions.forEach((c) => {
-    const key = toDateKey(c.eventDate);
-    const cat = c.challengeCategory ?? c.category ?? 'unknown';
+    const key = tsToDateString(c.eventDate);
+    const cat = c.challengeCategory ?? 'unknown';
 
     if (!dateToCategories.has(key)) {
       dateToCategories.set(key, new Set());
@@ -220,7 +211,7 @@ function computeCategoryStreaksFromWeekly(
     for (let i = 1; i <= 7; i++) {
       const d = new Date(endDate);
       d.setDate(endDate.getDate() - i);
-      const key = toDateKey(Timestamp.fromDate(d));
+      const key = tsToDateString(Timestamp.fromDate(d));
 
       const cats = dateToCategories.get(key);
       if (cats && cats.has(cat)) {
@@ -961,20 +952,11 @@ export const challengeService = {
 
             // 원본 contribution 필드들
             actionType: c.actionType,
-            category: c.category,
-            completed: c.completed,
             completionTime: c.completionTime,
-            createdAt: c.createdAt,
-            deviceTypeRaw: c.deviceType,
-            durationTypeRaw: c.durationType,
             energyKwh: c.energyKwh,
             eventDate: c.eventDate,
-            eventId: c.eventId,
-            familyId: c.familyId,
-            familyPoints: c.familyPoints,
             personalPoints: c.personalPoints,
             timeSlot: c.timeSlot,
-            value: c.value,
             weekday: c.weekday,
           };
 
@@ -1090,15 +1072,26 @@ export const challengeService = {
       this.getWeeklyCategoryStreaksForCurrentUser(baseDate),
     ]);
 
-    // LLM에 넘기기 좋은 형태로 가볍게 가공
+    // 1) weekly.contributions 에서 Timestamp/노이즈 정리
+    const plainWeeklyContributions = weekly.contributions.map((c) => {
+      const { eventDate, ...rest } = c;
+
+      return {
+        ...rest,
+        // Timestamp → 사람이 읽을 수 있는 문자열로 변환
+        eventDate: tsToDateString(eventDate),
+      };
+    });
+
+    // 2) 기간(start/end)도 Timestamp → 문자열로 변환
     return {
       period: {
-        start: weekly.start,
-        end: weekly.end,
+        start: tsToDateString(weekly.start),
+        end: tsToDateString(weekly.end),
       },
       today_success_count: today.successCount,
       category_streaks: streaks.streaks,
-      weekly_contributions: weekly.contributions,
+      weekly_contributions: plainWeeklyContributions,
     };
   },
 };
