@@ -11,6 +11,7 @@ import {
   serverTimestamp,
   setDoc,
   startAfter,
+  Timestamp,
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -59,6 +60,43 @@ export type ChallengeProgressDoc = {
   progressType?: string;
   recommendedTimeSlot?: string;
   unit?: string;
+  startedAt?: Timestamp;
+  lastEventDate?: Timestamp;
+};
+
+export type ContributionDoc = {
+  id: string;
+  challengeId: string;
+  challengeTitle?: string;
+  challengeCategory?: string;
+  deviceType?: string;
+  durationType?: string;
+  progressType?: string;
+  mode?: 'personal' | 'family';
+
+  // contribution 필드들
+  actionType?: string;
+  category?: string;
+  completed?: boolean;
+  completionTime?: string;
+  createdAt: Timestamp;
+  deviceTypeRaw?: string; // 원래 contribution.deviceType를 살리고 싶다면
+  durationTypeRaw?: string;
+  energyKwh?: number;
+  eventDate: Timestamp;
+  eventId?: string;
+  familyId?: string;
+  familyPoints?: number;
+  personalPoints?: number;
+  timeSlot?: string;
+  value?: number;
+  weekday?: number;
+};
+
+export type WeeklyContributionsResult = {
+  start: Timestamp; // 기간 시작 (포함)
+  end: Timestamp; // 기간 끝 (미포함)
+  contributions: ContributionDoc[];
 };
 
 // 챌린지 페이지네이션 타입 (AI 추천 / 기본 추천 둘 다 동일 구조)
@@ -67,7 +105,7 @@ export type ChallengeDtoPage = {
   cursor: string | null;
 };
 
-// 시간 관련 유틸
+// -------------- 시간 관련 유틸 --------------
 const formatTimeHHMMSS = (date: Date): string => {
   const h = String(date.getHours()).padStart(2, '0');
   const m = String(date.getMinutes()).padStart(2, '0');
@@ -85,6 +123,24 @@ const getTimeSlotFromHour = (hour: number): string => {
 const getWeekdayMon0 = (date: Date): number => {
   return (date.getDay() + 6) % 7;
 };
+
+// baseDate 기준으로 최근 7일 (어제까지) 범위 계산
+function getWeeklyRange(baseDate: Date): { start: Timestamp; end: Timestamp } {
+  // baseDate 기준 "오늘 0시"
+  const endDate = new Date(baseDate);
+  endDate.setHours(0, 0, 0, 0);
+
+  // 최근 7일 → 어제까지 (1일 ~ 7일)
+  const startDate = new Date(endDate);
+  startDate.setDate(endDate.getDate() - 7);
+
+  return {
+    start: Timestamp.fromDate(startDate),
+    end: Timestamp.fromDate(endDate),
+  };
+}
+
+// -----------------------------
 
 const mapDocToDto = (
   snap: QueryDocumentSnapshot<unknown, DocumentData>,
@@ -759,5 +815,102 @@ export const challengeService = {
     });
 
     return { items, cursor: null };
+  },
+
+  /**
+   * 기준 날짜(baseDate) 기준, "최근 1주일(어제까지)" 동안
+   * 현재 유저가 수행한 contributions를 가져온다.
+   *
+   * 1단계: challengeProgress 중 lastEventDate가 범위에 겹치는 챌린지들만 조회
+   * 2단계: 그 챌린지의 contributions 서브컬렉션에서 eventDate로 다시 필터링
+   */
+  async getWeeklyContributionsForCurrentUser(
+    baseDate: Date = new Date(),
+  ): Promise<WeeklyContributionsResult> {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('[getWeeklyContributionsForCurrentUser] no current user');
+    }
+
+    const { start, end } = getWeeklyRange(baseDate);
+
+    // 1) challengeProgress 중 lastEventDate가 주간에 겹치는 챌린지들만 조회
+    const progressColRef = collection(
+      db,
+      'users',
+      user.uid,
+      'challengeProgress',
+    );
+    const progressQuery = query(
+      progressColRef,
+      where('lastEventDate', '>=', start),
+      where('lastEventDate', '<', end),
+    );
+
+    const progressSnap = await getDocs(progressQuery);
+
+    if (progressSnap.empty) {
+      return { start, end, contributions: [] };
+    }
+
+    const tasks: Promise<ContributionDoc[]>[] = [];
+
+    progressSnap.forEach((progressDocSnap) => {
+      const progressData = progressDocSnap.data() as ChallengeProgressDoc;
+      const challengeId = progressData.challengeId ?? progressDocSnap.id;
+
+      const contribColRef = collection(progressDocSnap.ref, 'contributions');
+      const contribQuery = query(
+        contribColRef,
+        where('eventDate', '>=', start),
+        where('eventDate', '<', end),
+      );
+
+      const task = getDocs(contribQuery).then((contribSnap) => {
+        if (contribSnap.empty) return [];
+
+        return contribSnap.docs.map((contribDoc) => {
+          const c = contribDoc.data() as DocumentData;
+
+          const contribution: ContributionDoc = {
+            id: contribDoc.id,
+            challengeId,
+            challengeTitle: progressData.challengeTitle,
+            challengeCategory: progressData.challengeCategory,
+            deviceType: progressData.deviceType,
+            durationType: progressData.durationType,
+            progressType: progressData.progressType,
+            mode: progressData.mode,
+
+            // 원본 contribution 필드들
+            actionType: c.actionType,
+            category: c.category,
+            completed: c.completed,
+            completionTime: c.completionTime,
+            createdAt: c.createdAt,
+            deviceTypeRaw: c.deviceType,
+            durationTypeRaw: c.durationType,
+            energyKwh: c.energyKwh,
+            eventDate: c.eventDate,
+            eventId: c.eventId,
+            familyId: c.familyId,
+            familyPoints: c.familyPoints,
+            personalPoints: c.personalPoints,
+            timeSlot: c.timeSlot,
+            value: c.value,
+            weekday: c.weekday,
+          };
+
+          return contribution;
+        });
+      });
+
+      tasks.push(task);
+    });
+
+    const results = await Promise.all(tasks);
+    const contributions = results.flat();
+
+    return { start, end, contributions };
   },
 };
