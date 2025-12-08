@@ -1,4 +1,4 @@
-// dataset/challenge_progress_seedFirestore.js
+// scripts/challenge_progress_seedFirestore.js
 
 const path = require('path');
 
