@@ -105,6 +105,24 @@ export type ChallengeDtoPage = {
   cursor: string | null;
 };
 
+const mapDocToDto = (
+  snap: QueryDocumentSnapshot<unknown, DocumentData>,
+): ChallengeDto => {
+  const d = snap.data() as DocumentData;
+
+  return {
+    id: snap.id,
+    title: (d.title as string) ?? '',
+    mode: (d.mode as 'personal' | 'family') ?? 'personal',
+    category: (d.category as string) ?? 'chores',
+    basePersonalPoints: (d.basePersonalPoints as number) ?? 0,
+    baseFamilyPoints: (d.baseFamilyPoints as number) ?? 0,
+    createdAt: d.createdAt as string | undefined,
+    durationType: d.durationType as string | undefined,
+    recommendedTimeSlot: d.recommendedTimeSlot as string | undefined,
+  };
+};
+
 // -------------- 시간 관련 유틸 --------------
 const formatTimeHHMMSS = (date: Date): string => {
   const h = String(date.getHours()).padStart(2, '0');
@@ -140,25 +158,83 @@ function getWeeklyRange(baseDate: Date): { start: Timestamp; end: Timestamp } {
   };
 }
 
-// -----------------------------
+// baseDate 기준 하루 범위 (해당 날짜 0시 ~ 다음날 0시)
+function getDayRange(baseDate: Date): { start: Timestamp; end: Timestamp } {
+  const startDate = new Date(baseDate);
+  startDate.setHours(0, 0, 0, 0);
 
-const mapDocToDto = (
-  snap: QueryDocumentSnapshot<unknown, DocumentData>,
-): ChallengeDto => {
-  const d = snap.data() as DocumentData;
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 1);
 
   return {
-    id: snap.id,
-    title: (d.title as string) ?? '',
-    mode: (d.mode as 'personal' | 'family') ?? 'personal',
-    category: (d.category as string) ?? 'chores',
-    basePersonalPoints: (d.basePersonalPoints as number) ?? 0,
-    baseFamilyPoints: (d.baseFamilyPoints as number) ?? 0,
-    createdAt: d.createdAt as string | undefined,
-    durationType: d.durationType as string | undefined,
-    recommendedTimeSlot: d.recommendedTimeSlot as string | undefined,
+    start: Timestamp.fromDate(startDate),
+    end: Timestamp.fromDate(endDate),
   };
+}
+
+// Timestamp → 'YYYY-MM-DD' 문자열 키
+const toDateKey = (ts: Timestamp): string => {
+  const d = ts.toDate();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 };
+
+// -----------------------------
+
+// 최근 1주일 contributions 기준으로 카테고리별 연속 성공일수 계산
+function computeCategoryStreaksFromWeekly(
+  weekly: WeeklyContributionsResult,
+): Record<string, number> {
+  const { end, contributions } = weekly;
+
+  // 날짜별 → 카테고리 set
+  const dateToCategories = new Map<string, Set<string>>();
+
+  contributions.forEach((c) => {
+    const key = toDateKey(c.eventDate);
+    const cat = c.challengeCategory ?? c.category ?? 'unknown';
+
+    if (!dateToCategories.has(key)) {
+      dateToCategories.set(key, new Set());
+    }
+    dateToCategories.get(key)!.add(cat);
+  });
+
+  // 전체 카테고리 목록
+  const allCategories = new Set<string>();
+  dateToCategories.forEach((set) => {
+    set.forEach((cat) => allCategories.add(cat));
+  });
+
+  const streaks: Record<string, number> = {};
+  allCategories.forEach((cat) => (streaks[cat] = 0));
+
+  // end는 baseDate의 0시 → 마지막 포함일은 end - 1일
+  const endDate = end.toDate(); // ex) 12/08 00:00
+  // 7일치: end-1, end-2, ... end-7
+  for (const cat of allCategories) {
+    let streak = 0;
+
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(endDate);
+      d.setDate(endDate.getDate() - i);
+      const key = toDateKey(Timestamp.fromDate(d));
+
+      const cats = dateToCategories.get(key);
+      if (cats && cats.has(cat)) {
+        streak += 1;
+      } else {
+        break; // 끊기면 거기서 stop
+      }
+    }
+
+    streaks[cat] = streak;
+  }
+
+  return streaks;
+}
 
 // -----------------------------
 // AI 추천 RAW 타입 & API URL
@@ -817,6 +893,7 @@ export const challengeService = {
     return { items, cursor: null };
   },
 
+  // LLM AI에 넘길 3가지 - contribution, todaySuccessCount, categoryStreak
   /**
    * 기준 날짜(baseDate) 기준, "최근 1주일(어제까지)" 동안
    * 현재 유저가 수행한 contributions를 가져온다.
@@ -912,5 +989,97 @@ export const challengeService = {
     const contributions = results.flat();
 
     return { start, end, contributions };
+  },
+
+  /**
+   * 기준 날짜(baseDate) 기준 "오늘" 하루 동안
+   * 현재 유저가 완료한 contribution 개수를 반환한다.
+   *
+   * - progress에서 lastEventDate가 오늘에 겹치는 챌린지만 먼저 찾고
+   * - 그 챌린지의 contributions에서 eventDate 기준으로 다시 필터링
+   */
+  async getTodaySuccessCountForCurrentUser(
+    baseDate: Date = new Date(),
+  ): Promise<{ date: Timestamp; successCount: number }> {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('[getTodaySuccessCountForCurrentUser] no current user');
+    }
+
+    const { start, end } = getDayRange(baseDate);
+
+    // 1) 오늘 안에 이벤트가 있는 progress만 조회
+    const progressColRef = collection(
+      db,
+      'users',
+      user.uid,
+      'challengeProgress',
+    );
+    const progressQuery = query(
+      progressColRef,
+      where('lastEventDate', '>=', start),
+      where('lastEventDate', '<', end),
+    );
+
+    const progressSnap = await getDocs(progressQuery);
+    if (progressSnap.empty) {
+      return { date: start, successCount: 0 };
+    }
+
+    let total = 0;
+    const tasks: Promise<void>[] = [];
+
+    progressSnap.forEach((progressDocSnap) => {
+      const contribColRef = collection(progressDocSnap.ref, 'contributions');
+      const contribQuery = query(
+        contribColRef,
+        where('eventDate', '>=', start),
+        where('eventDate', '<', end),
+      );
+
+      const task = getDocs(contribQuery).then((contribSnap) => {
+        contribSnap.forEach((docSnap) => {
+          const c = docSnap.data() as DocumentData;
+          const completed: boolean = c.completed ?? true; // seed 데이터는 대부분 true라 가정
+          if (completed) {
+            total += 1;
+          }
+        });
+      });
+
+      tasks.push(task);
+    });
+
+    await Promise.all(tasks);
+
+    return {
+      date: start, // 해당 "오늘"의 0시
+      successCount: total,
+    };
+  },
+
+  /**
+   * 기준 날짜(baseDate) 기준, "최근 1주일(어제까지)" contributions를 기반으로
+   * 카테고리별 연속 며칠 성공했는지 계산.
+   *
+   * - "성공"의 기준: 해당 날짜에 해당 카테고리 contribution이 1개 이상 존재
+   * - streak은 baseDate의 전날부터 거꾸로 올라가며 끊길 때까지 센다.
+   */
+  async getWeeklyCategoryStreaksForCurrentUser(
+    baseDate: Date = new Date(),
+  ): Promise<{
+    start: Timestamp;
+    end: Timestamp;
+    streaks: Record<string, number>;
+  }> {
+    const weekly = await this.getWeeklyContributionsForCurrentUser(baseDate);
+
+    const streaks = computeCategoryStreaksFromWeekly(weekly);
+
+    return {
+      start: weekly.start,
+      end: weekly.end,
+      streaks,
+    };
   },
 };
