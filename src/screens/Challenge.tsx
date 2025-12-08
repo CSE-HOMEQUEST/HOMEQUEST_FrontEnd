@@ -672,6 +672,34 @@ export function Challenge() {
     hydrate();
   };
 
+  // AI 리포트 디버그: currentUser 기준으로 한 번 호출
+  useEffect(() => {
+    const run = async () => {
+      const fbUser = auth.currentUser;
+
+      if (!fbUser) {
+        console.log('[AI REPORT] no auth.currentUser, skip');
+        return;
+      }
+
+      console.log('[AI REPORT] start for uid =', fbUser.uid);
+
+      // 필요하면 특정 날짜로 고정해서 테스트 가능
+      // const baseDate = new Date('2025-12-08T00:00:00+09:00');
+      const baseDate = new Date();
+
+      try {
+        const report = await challengeService.getWeeklyAiReportData(baseDate);
+
+        console.log('[AI REPORT DEBUG]', JSON.stringify(report, null, 2));
+      } catch (e) {
+        console.error('[AI REPORT DEBUG ERROR]', e);
+      }
+    };
+
+    run();
+  }, []);
+
   // 나 & 우리 가족 챌린지 요약 통계 로드
   useEffect(() => {
     const fbUser = auth.currentUser;

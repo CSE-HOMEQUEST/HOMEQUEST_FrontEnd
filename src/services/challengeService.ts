@@ -1082,4 +1082,23 @@ export const challengeService = {
       streaks,
     };
   },
+
+  async getWeeklyAiReportData(baseDate: Date = new Date()) {
+    const [weekly, today, streaks] = await Promise.all([
+      this.getWeeklyContributionsForCurrentUser(baseDate),
+      this.getTodaySuccessCountForCurrentUser(baseDate),
+      this.getWeeklyCategoryStreaksForCurrentUser(baseDate),
+    ]);
+
+    // LLM에 넘기기 좋은 형태로 가볍게 가공
+    return {
+      period: {
+        start: weekly.start,
+        end: weekly.end,
+      },
+      today_success_count: today.successCount,
+      category_streaks: streaks.streaks,
+      weekly_contributions: weekly.contributions,
+    };
+  },
 };
