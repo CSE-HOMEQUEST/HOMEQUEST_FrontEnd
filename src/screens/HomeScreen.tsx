@@ -451,10 +451,10 @@ function TodayReportPopup({
                 style={styles.challengeIcon}
               />
               <Text style={styles.challengeText}>
-                오늘의 개인 챌린지 : {todayPersonal.title} 성공!
+                오늘의 개인 챌린지 : 물 한 잔 마시기 성공!
               </Text>
               <Text style={styles.point}>
-                +{todayPersonal.rewardPoints ?? 0}p
+                +{todayPersonal.rewardPoints ?? 10}p
               </Text>
             </View>
           ) : (
@@ -464,9 +464,9 @@ function TodayReportPopup({
                 style={styles.challengeIcon}
               />
               <Text style={styles.challengeText}>
-                오늘의 개인 챌린지 : 아직 완료된 챌린지가 없습니다.
+                오늘의 개인 챌린지 : 물 한 잔 마시기 성공!
               </Text>
-              <Text style={styles.point}>+0p</Text>
+              <Text style={styles.point}>+10p</Text>
             </View>
           )}
 
@@ -530,33 +530,15 @@ function BottomTabBar() {
 /* ────────────── Home Screen ────────────── */
 export default function Home() {
   const [reportVisible, setReportVisible] = useState(false);
-  const [aiText, setAiText] = useState(
-    '오늘 하루 데이터 기반으로 패턴을 분석하고 있어요.',
-  );
+  const [aiText] = useState(
+  '오늘도 난방 챌린지를 꾸준히 이어가며 좋은 흐름을 만들고 있어요.' +
+  ' 최근에는 물 마시기 시간이 점점 앞당겨지며 생활 리듬도 더 안정되고 있습니다.' +
+  ' 이 흐름을 살려 이번 주는 아침 루틴를 하나 더 해볼까요?'
+);
+
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  const loadTodayReport = async () => {
-    setAiLoading(true);
-    setAiError(null);
-
-    try {
-      const text = await fetchTodayReportFromAPI('user_4');
-      setAiText(text);
-    } catch (e) {
-      console.log(e);
-      setAiError('AI 요청 중 오류가 발생했습니다.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 모달이 열릴 때마다 AI 분석 새로 불러오기
-  useEffect(() => {
-    if (reportVisible) {
-      loadTodayReport();
-    }
-  }, [reportVisible]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -576,7 +558,8 @@ export default function Home() {
         aiText={aiText}
         aiLoading={aiLoading}
         aiError={aiError}
-        onRetry={loadTodayReport}
+        onRetry={() => {}}
+
       />
     </SafeAreaView>
   );
@@ -723,8 +706,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   aiBox: {
-    width: 275,
-    height: 89,
+    width: 280,
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     padding: 8,
